@@ -9,8 +9,9 @@ else:
     print('Input Validation FAILED:', details)
 "
 
-Write-Host "Running baseline driver patch generation..." -ForegroundColor Cyan
-python driver.py
+Write-Host "Running custom patch generation..." -ForegroundColor Cyan
+$env:PYTHONPATH="c:\IR-colorization-BAH2026"
+python -m data_pipeline.prepare_dataset
 
 Write-Host "Verifying patch alignment and co-registration..." -ForegroundColor Cyan
 python -c "
