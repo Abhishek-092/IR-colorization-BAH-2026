@@ -1,4 +1,6 @@
+# pyrefly: ignore [missing-import]
 import ee
+# pyrefly: ignore [missing-import]
 import geemap
 import os
 import argparse
