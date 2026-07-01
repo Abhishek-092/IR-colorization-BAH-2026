@@ -280,9 +280,10 @@ class UnifiedTrainer:
             for k in range(K):
                 # Channel indexing match: bias[K + k*3 + c]
                 # channel 0 = Blue, channel 1 = Green, channel 2 = Red
-                self.mixture_head.proj.bias.data[K + k * 3 + 0] = float(qb[min(k, len(qb)-1)])
-                self.mixture_head.proj.bias.data[K + k * 3 + 1] = float(qg[min(k, len(qg)-1)])
-                self.mixture_head.proj.bias.data[K + k * 3 + 2] = float(qr[min(k, len(qr)-1)])
+                # Scale from original 0-10000 reflectance range to [0, 255]
+                self.mixture_head.proj.bias.data[K + k * 3 + 0] = float(qb[min(k, len(qb)-1)]) * (255.0 / 10000.0)
+                self.mixture_head.proj.bias.data[K + k * 3 + 1] = float(qg[min(k, len(qg)-1)]) * (255.0 / 10000.0)
+                self.mixture_head.proj.bias.data[K + k * 3 + 2] = float(qr[min(k, len(qr)-1)]) * (255.0 / 10000.0)
         
         logger.info(f"Successfully initialized {K} components' means with empirical quantiles.")
 
