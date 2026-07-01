@@ -99,7 +99,7 @@ class UnifiedTrainer:
 
                 optimizer.zero_grad()
                 features = self.backbone(lr_tir)
-                pred_hr = self.sr_head(features)
+                pred_hr = self.sr_head(features, lr_tir)
 
                 # Compute loss
                 loss_l1 = l1_criterion(pred_hr, hr_tir)
@@ -139,7 +139,7 @@ class UnifiedTrainer:
                 hr_tir = batch["tir_100m_512"].to(self.device)
 
                 features = self.backbone(lr_tir)
-                pred_hr = self.sr_head(features)
+                pred_hr = self.sr_head(features, lr_tir)
 
                 mse = F.mse_loss(pred_hr, hr_tir)
                 if mse > 0:
@@ -200,7 +200,7 @@ class UnifiedTrainer:
                 optimizer.zero_grad()
                 with torch.no_grad():
                     features = self.backbone(lr_tir)
-                    pred_sr = self.sr_head(features)
+                    pred_sr = self.sr_head(features, lr_tir)
 
                 # Predict mixture parameters
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
@@ -237,7 +237,7 @@ class UnifiedTrainer:
                 target_rgb = batch["rgb_100m_512"].to(self.device)
 
                 features = self.backbone(lr_tir)
-                pred_sr = self.sr_head(features)
+                pred_sr = self.sr_head(features, lr_tir)
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
 
                 loss = criterion(logit_weights, means, log_scales, target_rgb)
