@@ -28,7 +28,7 @@ class DecodeSubmoduleFP32(nn.Module):
 
         # Scale parameters (softplus + epsilon)
         # Assuming epsilon=1.0 is used for training
-        scales = torch.softplus(log_scales) + 1.0 # (B, K, 3, H, W)
+        scales = F.softplus(log_scales) + 1.0 # (B, K, 3, H, W)
 
         # 1. Reported color = mean of the dominant component (argmax of pi)
         k_star = torch.argmax(pi, dim=1, keepdim=True) # (B, 1, H, W)
