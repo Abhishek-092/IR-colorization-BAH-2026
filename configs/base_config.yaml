@@ -1,0 +1,10 @@
+defaults:
+  - data
+  - training
+  - evaluation
+  - inference
+  - _self_
+
+experiment_id: "varna_baseline"
+device: "cuda"
+seed: 42
