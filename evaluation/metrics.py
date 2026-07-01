@@ -18,8 +18,9 @@ def compute_ssim(pred, target):
     """
     # Simply use cv2 quality metrics or manual simplified SSIM to avoid dependencies
     # Standard formula implementation
-    C1 = (0.01 * 255) ** 2
-    C2 = (0.03 * 255) ** 2
+    dynamic_range = 1.0 if target.max() <= 1.0 else 255.0
+    C1 = (0.01 * dynamic_range) ** 2
+    C2 = (0.03 * dynamic_range) ** 2
 
     pred = pred.astype(np.float64)
     target = target.astype(np.float64)
