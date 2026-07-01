@@ -169,6 +169,11 @@ def main():
         logger.info("Validating deliverables and generating submission package...")
         from submission.generate_submission import package_submission
         package_submission()
+        
+    elif args.command == "generate-sample-results":
+        logger.info("Generating publication-quality sample results figures...")
+        from evaluation.sample_results import generate_sample_results
+        generate_sample_results()
 
 if __name__ == "__main__":
     main()
