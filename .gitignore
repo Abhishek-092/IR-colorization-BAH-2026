@@ -29,3 +29,11 @@ checkpoints/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Submission Packages
+*.zip
+
+# IDE configurations and local settings
+.vscode/
+.idea/
+.streamlit/
