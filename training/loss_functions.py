@@ -79,7 +79,7 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
         log_weights = F.log_softmax(logit_weights, dim=1) # (B, K, H, W)
 
         # Enforce scale floor
-        scales = torch.softplus(log_scales) + self.epsilon # (B, K, 3, H, W)
+        scales = F.softplus(log_scales) + self.epsilon # (B, K, 3, H, W)
 
         # Calculate limits for discretized bin probabilities
         # Targets are in range [0, 255]
