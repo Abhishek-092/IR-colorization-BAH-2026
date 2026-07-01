@@ -59,7 +59,7 @@ def validate_input_product(product_dir):
                 details[suffix] = {
                     "shape": src.shape,
                     "crs": crs,
-                    "dtype": str(src.dtype),
+                    "dtype": str(src.dtypes[0]),
                     "nans": int(nan_count),
                     "infs": int(inf_count)
                 }
