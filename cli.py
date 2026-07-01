@@ -7,6 +7,10 @@ import torch
 from omegaconf import OmegaConf
 
 from training.trainer import UnifiedTrainer
+from training.backbone import ResNetBackbone
+from training.sr_head import SRHead
+from training.mixture_head import MixtureHead
+from inference.pipeline import VARNAInferencePipeline
 from training.utils.config_schema import validate_varna_config
 from training.utils.logger import setup_varna_logger
 
