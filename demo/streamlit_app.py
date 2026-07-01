@@ -66,7 +66,11 @@ else:
          rgb_100_gt = np.moveaxis(rgb_100_gt, -1, 0)
          
     # Run Inference
-    input_tensor = torch.from_numpy(tir_200).float().unsqueeze(0).unsqueeze(0)
+    input_tensor = torch.from_numpy(tir_200).float()
+    if input_tensor.ndim == 2:
+        input_tensor = input_tensor.unsqueeze(0).unsqueeze(0)
+    elif input_tensor.ndim == 3:
+        input_tensor = input_tensor.unsqueeze(0)
     
     with torch.no_grad():
         sr_tir, decode_outs = pipeline(input_tensor)
