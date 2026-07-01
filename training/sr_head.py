@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class SRHead(nn.Module):
     """
@@ -29,7 +30,7 @@ class SRHead(nn.Module):
             nn.Conv2d(16, out_channels, kernel_size=3, padding=1)
         )
 
-    def forward(self, features):
+    def forward(self, features, lr_tir=None):
         # We use the f1 feature map which has same spatial dimensions as input (200m, e.g., 256x256)
         x = features["f1"]
         x = self.conv1(x)
@@ -38,4 +39,9 @@ class SRHead(nn.Module):
 
         x = self.upsample(x) # Upsampled to (B, 4, 2H, 2W)
         x = self.conv_out(x) # Out: (B, 1, 2H, 2W)
+        
+        if lr_tir is not None:
+            lr_upsampled = F.interpolate(lr_tir, size=x.shape[-2:], mode="bilinear", align_corners=False)
+            x = x + lr_upsampled
+            
         return x
