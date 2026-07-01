@@ -143,10 +143,7 @@ class UnifiedTrainer:
 
                 mse = F.mse_loss(pred_hr, hr_tir)
                 if mse > 0:
-                    psnr = 10 * torch.log10(1.0 / mse) # assuming float normalized [0, 1] input scaling or relative
-                    # If inputs are not normalized to [0,1], we divide by peak range.
-                    # Since temperature values can be around 300, let's normalize range for metrics to 350
-                    psnr = 10 * torch.log10((350.0 ** 2) / mse)
+                    psnr = 10 * torch.log10(1.0 / mse)
                     total_psnr += psnr.item()
                 count += 1
 
