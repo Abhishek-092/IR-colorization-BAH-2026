@@ -45,7 +45,8 @@ class UnifiedTrainer:
         # Setup dataset and loader
         self.train_dataset = PatchDataset(
             patches_dir=cfg.data.patches_dir,
-            product_ids=cfg.data.splits.train
+            product_ids=cfg.data.splits.train,
+            augment=True
         )
         self.val_dataset = PatchDataset(
             patches_dir=cfg.data.patches_dir,
@@ -110,6 +111,7 @@ class UnifiedTrainer:
                 loss = w.l1 * loss_l1 + w.degradation * loss_deg + w.edge * loss_edge
 
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(list(self.backbone.parameters()) + list(self.sr_head.parameters()), max_norm=1.0)
                 optimizer.step()
                 train_loss += loss.item()
 
@@ -210,6 +212,7 @@ class UnifiedTrainer:
 
                 loss = nll_criterion(logit_weights, means, log_scales, target_rgb)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(list(self.mixture_head.parameters()) + list(self.backbone.parameters()), max_norm=1.0)
                 optimizer.step()
                 train_loss += loss.item()
 
