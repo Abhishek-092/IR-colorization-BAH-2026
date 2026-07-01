@@ -122,7 +122,7 @@ def run_evaluation_report(config_path="configs/base_config.yaml"):
     # 1. Compute SR metrics
     sr_preds = np.array(sr_preds)
     sr_targets = np.array(sr_targets)
-    psnr_val = compute_psnr(sr_preds, sr_targets)
+    psnr_val = compute_psnr(sr_preds, sr_targets, peak=1.0)
     rmse_val = compute_bt_rmse(sr_preds, sr_targets)
     
     # SSIM computed per image and averaged
