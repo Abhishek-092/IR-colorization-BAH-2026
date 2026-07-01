@@ -1,6 +1,11 @@
 # 🛰️ Project SUTRAM (Bharatiya Antriksh Hackathon 2026)
 ## Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling
 
+> [!IMPORTANT]
+> **🚀 Hackathon Deliverables Access:**  
+> All final model weights, exported ONNX graphs, compiled Sample Results PDF, and the technical report can be downloaded directly from the official:  
+> **[Google Drive Deliverables Folder](https://drive.google.com/drive/folders/1lSVZ4rHBjztUMhYd5s8J_ZKSJkIPtzXt?usp=sharing)**
+
 Project SUTRAM is a high-performance deep learning pipeline designed for **Thermal-to-Optical cross-spectral translation and spatial super-resolution** using Landsat-9 TIRS-2 and OLI observations.
 
 ---
