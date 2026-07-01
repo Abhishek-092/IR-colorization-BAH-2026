@@ -60,7 +60,6 @@ def main():
         
     elif args.command == "benchmark":
         logger.info("Benchmarking execution latency and parameter counts...")
-        import torch
         import time
         from training.backbone import ResNetBackbone
         from training.sr_head import SRHead
