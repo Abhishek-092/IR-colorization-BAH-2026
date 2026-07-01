@@ -3,7 +3,7 @@ import torch
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
-from inference.pipeline import VARNAInferencePipeline
+from inference.pipeline import SUTRAMInferencePipeline
 
 def test_inference_pipeline_forward_shapes():
     """
@@ -18,7 +18,7 @@ def test_inference_pipeline_forward_shapes():
     sr_head = SRHead()
     mix_head = MixtureHead(K=K)
     
-    pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=K)
+    pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=K)
     pipeline.eval()
     
     lr_tir = torch.randn(B, 1, 256, 256)
