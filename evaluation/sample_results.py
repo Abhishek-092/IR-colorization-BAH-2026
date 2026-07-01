@@ -80,7 +80,7 @@ def generate_sample_results():
         fig.patch.set_facecolor('#f7f9fc')
         
         # Text blocks
-        plt.text(0.5, 0.70, "PROJECT VARNA", ha="center", va="center", fontsize=38, fontweight="bold", color="#1c2331")
+        plt.text(0.5, 0.70, "PROJECT SUTRAM", ha="center", va="center", fontsize=38, fontweight="bold", color="#1c2331")
         plt.text(0.5, 0.62, "Bharatiya Antriksh Hackathon (BAH) 2026", ha="center", va="center", fontsize=18, color="#ff4500", fontweight="semibold")
         plt.text(0.5, 0.58, "Submission Category: Thermal-to-Optical Image Enhancement", ha="center", va="center", fontsize=13, color="#555555")
         
@@ -89,7 +89,7 @@ def generate_sample_results():
         
         desc_text = (
             "Abstract & System Description:\n\n"
-            "Project VARNA implements a dual-stage neural pipeline designed to super-resolve single-band\n"
+            "Project SUTRAM implements a dual-stage neural pipeline designed to super-resolve single-band\n"
             "thermal infrared (TIR) images (200m) and colorize them to optical-grade multispectral RGB (100m).\n"
             "Leveraging a residual super-resolution module and a discretized logistic mixture model, the system\n"
             "reconstructs fine structural components while managing predictive radiometric uncertainty."
@@ -171,13 +171,13 @@ def generate_sample_results():
             metadata_box = (
                 f"Scene Product ID: {scene['id']}\n"
                 f"Resolution Enhancement: 200m (TIRS-2) → 100m (OLI Spatial Alignment)\n"
-                f"Model Architecture: VARNA (Variational class-Aware Radiance-to-reflectance Network)\n"
+                f"Model Architecture: SUTRAM (Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling)\n"
                 f"Processing Pipeline: Phased PixelShuffle Upscaling & Variational Logistic Mixture Decoder"
             )
             ax_text.text(0.02, 0.5, metadata_box, fontsize=10, fontweight="semibold", color="#1c2331", va="center", linespacing=1.6)
             
             # Title
-            fig.suptitle(f"VARNA Visual Reconstruction Report\nScene: {scene['id']}", 
+            fig.suptitle(f"SUTRAM Visual Reconstruction Report\nScene: {scene['id']}", 
                          fontsize=14, fontweight="bold", y=0.96)
             
             pdf.savefig(fig, bbox_inches="tight")
@@ -199,7 +199,7 @@ def generate_sample_results():
             axes_png[2].set_title("3. Synthesized OLI RGB (100m)", fontsize=13, fontweight="bold", pad=12)
             axes_png[2].axis("off")
             
-            fig_png.suptitle(f"VARNA Enhancement Output - Scene {scene['id']}", fontsize=15, fontweight="bold", y=0.98)
+            fig_png.suptitle(f"SUTRAM Enhancement Output - Scene {scene['id']}", fontsize=15, fontweight="bold", y=0.98)
             
             png_out = os.path.join(output_dir, f"comparison_{scene['id']}.png")
             fig_png.savefig(png_out, bbox_inches="tight", facecolor=fig_png.get_facecolor(), edgecolor='none')
