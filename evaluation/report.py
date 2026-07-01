@@ -86,7 +86,7 @@ def run_evaluation_report(config_path="configs/base_config.yaml"):
             hr_rgb = sample["rgb_100m_512"].numpy()
             
             features = backbone(lr_tir)
-            pred_sr = sr_head(features)
+            pred_sr = sr_head(features, lr_tir)
             logit_weights, means, log_scales = mixture_head(features, pred_sr)
 
             # Stage 1 predictions
