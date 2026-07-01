@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import logging
+import numpy as np
 from omegaconf import OmegaConf
 
 from training.trainer import UnifiedTrainer
