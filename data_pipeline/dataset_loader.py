@@ -9,10 +9,11 @@ class PatchDataset(Dataset):
     PyTorch Dataset for loading co-registered patches.
     Strictly enforces loading of .npy files and raises an exception for any .png file requests.
     """
-    def __init__(self, patches_dir, product_ids=None, transform=None):
+    def __init__(self, patches_dir, product_ids=None, transform=None, augment=False):
         super().__init__()
         self.patches_dir = patches_dir
         self.transform = transform
+        self.augment = augment
         self.samples = []
 
         # Find product directories
@@ -77,6 +78,25 @@ class PatchDataset(Dataset):
         tir_200 = torch.from_numpy(tir_200)
         tir_100 = torch.from_numpy(tir_100)
         rgb_100 = torch.from_numpy(rgb_100)
+
+        # Apply random spatial augmentations if enabled (training mode)
+        if self.augment:
+            # Random horizontal flip
+            if np.random.rand() > 0.5:
+                tir_200 = torch.flip(tir_200, dims=[-1])
+                tir_100 = torch.flip(tir_100, dims=[-1])
+                rgb_100 = torch.flip(rgb_100, dims=[-1])
+            # Random vertical flip
+            if np.random.rand() > 0.5:
+                tir_200 = torch.flip(tir_200, dims=[-2])
+                tir_100 = torch.flip(tir_100, dims=[-2])
+                rgb_100 = torch.flip(rgb_100, dims=[-2])
+            # Random 90-degree rotation
+            rot_k = np.random.randint(0, 4)
+            if rot_k > 0:
+                tir_200 = torch.rot90(tir_200, k=rot_k, dims=[-2, -1])
+                tir_100 = torch.rot90(tir_100, k=rot_k, dims=[-2, -1])
+                rgb_100 = torch.rot90(rgb_100, k=rot_k, dims=[-2, -1])
 
         sample = {
             "tir_200m": tir_200,
