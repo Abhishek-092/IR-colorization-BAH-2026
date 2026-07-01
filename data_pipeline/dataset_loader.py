@@ -54,6 +54,15 @@ class PatchDataset(Dataset):
         tir_100 = np.load(tir_100m_path).astype(np.float32)
         rgb_100 = np.load(rgb_100m_path).astype(np.float32)
 
+        # Normalize TIR (B10) to [0, 1] using min=20000.0, max=35000.0
+        TIR_MIN, TIR_MAX = 20000.0, 35000.0
+        tir_200 = np.clip((tir_200 - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+        tir_100 = np.clip((tir_100 - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+
+        # Normalize RGB to [0, 255] using scale=10000.0
+        RGB_SCALE = 10000.0
+        rgb_100 = np.clip((rgb_100 / RGB_SCALE) * 255.0, 0.0, 255.0)
+
         # Expand dims if single-channel to (C, H, W)
         if tir_200.ndim == 2:
             tir_200 = np.expand_dims(tir_200, axis=0)
