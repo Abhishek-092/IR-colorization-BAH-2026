@@ -63,7 +63,7 @@ def verify_stage2():
         sr_dummy = torch.randn(1, 1, 512, 512)
         logit_weights, means, log_scales = mix_head(feat, sr_dummy)
         
-    if logit_weights.shape != (1, 6, 256, 256) or means.shape != (1, 18, 256, 256):
+    if logit_weights.shape != (1, 6, 512, 512) or means.shape != (1, 6, 3, 512, 512):
         return False, f"Output shape mismatch: weights={logit_weights.shape}, means={means.shape}"
         
     return True, "Passed shape and load integrity checks"
