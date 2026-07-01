@@ -54,7 +54,50 @@ def main():
         run_evaluation_report(args.config)
         
     elif args.command == "benchmark":
-        logger.info("Benchmarking execution latency...")
+        logger.info("Benchmarking execution latency and parameter counts...")
+        import torch
+        import time
+        from training.backbone import ResNetBackbone
+        from training.sr_head import SRHead
+        from training.mixture_head import MixtureHead
+        
+        backbone = ResNetBackbone()
+        sr_head = SRHead()
+        mix_head = MixtureHead(K=cfg.training.stage2.K)
+        
+        # Parameter counting
+        bb_params = sum(p.numel() for p in backbone.parameters())
+        sr_params = sum(p.numel() for p in sr_head.parameters())
+        mix_params = sum(p.numel() for p in mix_head.parameters())
+        total_params = bb_params + sr_params + mix_params
+        
+        print(f"Backbone parameters: {bb_params:,}")
+        print(f"SR Head parameters: {sr_params:,}")
+        print(f"Mixture Head parameters: {mix_params:,}")
+        print(f"Total Model parameters: {total_params:,}")
+        
+        # Latency profiling
+        from inference.pipeline import VARNAInferencePipeline
+        pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
+        pipeline.eval()
+        
+        dummy_input = torch.randn(1, 1, 256, 256)
+        
+        # Warmup
+        for _ in range(5):
+            with torch.no_grad():
+                _ = pipeline(dummy_input)
+                
+        # Profile loop
+        runs = 50
+        start_time = time.perf_counter()
+        for _ in range(runs):
+            with torch.no_grad():
+                _ = pipeline(dummy_input)
+        end_time = time.perf_counter()
+        
+        avg_latency = ((end_time - start_time) / runs) * 1000
+        print(f"Average CPU forward pass latency: {avg_latency:.2f} ms")
         
     elif args.command == "export":
         logger.info("Exporting models to ONNX and running full inference...")
