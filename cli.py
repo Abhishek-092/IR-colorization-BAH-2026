@@ -100,8 +100,11 @@ def main():
         
         if os.path.exists(lr_tir_path) and os.path.exists(ref_path):
             lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
-            # Add batch and channel dimensions
-            lr_tensor = torch.from_numpy(lr_img).unsqueeze(0).unsqueeze(0)
+            lr_tensor = torch.from_numpy(lr_img)
+            if lr_tensor.ndim == 2:
+                lr_tensor = lr_tensor.unsqueeze(0).unsqueeze(0)
+            elif lr_tensor.ndim == 3:
+                lr_tensor = lr_tensor.unsqueeze(0)
             
             with torch.no_grad():
                 sr_tir, decode_outs = pipeline(lr_tensor)
