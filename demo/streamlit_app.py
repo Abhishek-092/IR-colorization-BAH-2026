@@ -8,11 +8,11 @@ from PIL import Image
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
-from inference.pipeline import VARNAInferencePipeline
+from inference.pipeline import SUTRAMInferencePipeline
 from evaluation.visualization import percentile_stretch
 
 # Set premium page layout
-st.set_page_config(layout="wide", page_title="VARNA: TIR Colorization and Enhancement")
+st.set_page_config(layout="wide", page_title="SUTRAM: Satellite Uncertainty-aware Thermal Reconstruction")
 
 # Custom CSS for custom premium theme, typography, and card layouts
 st.markdown("""
@@ -85,8 +85,8 @@ st.markdown("""
 # Accent bar at the top of the UI
 st.markdown('<div class="header-bar"></div>', unsafe_allow_html=True)
 
-st.title("🛰️ Project VARNA (Bharatiya Antriksh Hackathon 2026)")
-st.caption("Variational class-Aware Radiance-to-reflectance Network for Thermal-to-Optical Satellite Image Enhancement")
+st.title("🛰️ Project SUTRAM (Bharatiya Antriksh Hackathon 2026)")
+st.caption("Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling")
 
 # Sidebar configurations
 st.sidebar.header("🔧 Model Configuration")
@@ -95,7 +95,7 @@ confidence_threshold = st.sidebar.slider("Abstention Variance Threshold", 0.0, 1
 
 # Load pipeline models
 @st.cache_resource
-def load_varna_pipeline(K):
+def load_sutram_pipeline(K):
     backbone = ResNetBackbone()
     sr_head = SRHead()
     mix_head = MixtureHead(K=K)
@@ -113,11 +113,11 @@ def load_varna_pipeline(K):
     if os.path.exists(mix_path):
         mix_head.load_state_dict(torch.load(mix_path, map_location="cpu"))
         
-    pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=K)
+    pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=K)
     pipeline.eval()
     return pipeline
 
-pipeline = load_varna_pipeline(K_components)
+pipeline = load_sutram_pipeline(K_components)
 
 # Dataset selection
 st.sidebar.header("📂 Dataset Explorer")
@@ -183,7 +183,7 @@ else:
         with col3:
             # Transpose to (H,W,C) for visualization
             pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
-            st.image(percentile_stretch(pred_rgb_viz), caption="VARNA Synthesized Colorized RGB (100m)", use_container_width=True)
+            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", use_container_width=True)
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
             st.image(percentile_stretch(rgb_gt_viz), caption="Ground-Truth OLI RGB (100m)", use_container_width=True)
