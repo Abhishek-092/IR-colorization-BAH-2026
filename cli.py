@@ -105,7 +105,6 @@ def main():
         
     elif args.command == "export":
         logger.info("Exporting models to ONNX and running full inference...")
-        import torch
         import tifffile
         from training.backbone import ResNetBackbone
         from training.sr_head import SRHead
