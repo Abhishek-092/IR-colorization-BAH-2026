@@ -10,7 +10,7 @@ from training.trainer import UnifiedTrainer
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
-from inference.pipeline import VARNAInferencePipeline
+from inference.pipeline import SUTRAMInferencePipeline
 from training.utils.config_schema import validate_varna_config
 from training.utils.logger import setup_varna_logger
 
@@ -119,7 +119,7 @@ def main():
         sr_head.load_state_dict(torch.load(f"{checkpoint_dir}/sr_head_stage1.pth", map_location="cpu"))
         mix_head.load_state_dict(torch.load(f"{checkpoint_dir}/mixture_head_stage2.pth", map_location="cpu"))
 
-        pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
+        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
         pipeline.eval()
 
         # 1. Trace and export ONNX model
@@ -193,8 +193,7 @@ def main():
         sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
         mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
         
-        from inference.pipeline import VARNAInferencePipeline
-        pipeline = VARNAInferencePipeline(backbone, sr_head, mixture_head, K=checkpoint["config"]["K_components"])
+        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mixture_head, K=checkpoint["config"]["K_components"])
         pipeline.eval()
         
         input_dir = args.input if args.input is not None else "input/LC09_L2SP_146044_20260701_20260701_02_T1"
