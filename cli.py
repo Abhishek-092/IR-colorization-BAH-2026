@@ -13,7 +13,7 @@ logger = logging.getLogger("varna.cli")
 
 def main():
     parser = argparse.ArgumentParser(description="VARNA Unified Workflow Command Line Interface")
-    parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit"],
+    parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results"],
                         help="Workflow command to execute")
     parser.add_argument("--config", default="configs/base_config.yaml",
                         help="Path to Hydra base configuration file")
