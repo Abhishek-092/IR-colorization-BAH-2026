@@ -19,14 +19,14 @@ def main():
 
     # Load configuration
     try:
-        cfg = OmegaConf.load(args.config)
-        # Manually compose defaults since we are running without Hydra's CLI wrapper for speed
-        if "defaults" in cfg:
-            for default_cfg in cfg.defaults:
-                if isinstance(default_cfg, str) and default_cfg != "_self_":
-                    child_path = f"configs/{default_cfg}.yaml"
-                    child_cfg = OmegaConf.load(child_path)
-                    cfg = OmegaConf.merge(child_cfg, cfg)
+        # Explicitly load and merge standard configs to match base config structure
+        data_cfg = OmegaConf.load("configs/data.yaml")
+        training_cfg = OmegaConf.load("configs/training.yaml")
+        eval_cfg = OmegaConf.load("configs/evaluation.yaml")
+        inf_cfg = OmegaConf.load("configs/inference.yaml")
+        base_cfg = OmegaConf.load(args.config)
+        
+        cfg = OmegaConf.merge(base_cfg, OmegaConf.create({"data": data_cfg, "training": training_cfg, "evaluation": eval_cfg, "inference": inf_cfg}))
         
         # Setup logging
         setup_varna_logger(cfg.data.output_dir)
