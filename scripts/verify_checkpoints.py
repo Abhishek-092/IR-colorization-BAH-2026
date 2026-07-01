@@ -97,7 +97,7 @@ def verify_final():
         sr_out = sr_head(feat, x)
         logit_weights, means, log_scales = mix_head(feat, sr_out)
         
-    if sr_out.shape != (1, 1, 512, 512) or logit_weights.shape != (1, 6, 256, 256):
+    if sr_out.shape != (1, 1, 512, 512) or logit_weights.shape != (1, 6, 512, 512):
         return False, f"Output shape mismatch: sr={sr_out.shape}, weights={logit_weights.shape}"
         
     return True, "Passed shape and load integrity checks"
