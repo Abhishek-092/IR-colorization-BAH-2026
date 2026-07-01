@@ -1,0 +1,22 @@
+[project]
+name = "varna"
+version = "1.0.0"
+description = "Variational class-Aware Radiance-to-reflectance Network for thermal image colorization"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "numpy>=1.22.0",
+    "tifffile>=2023.1.1",
+    "opencv-python>=4.7.0",
+    "Pillow>=9.4.0",
+    "hydra-core>=1.3.2",
+    "omegaconf>=2.3.0",
+    "rasterio>=1.3.0",
+    "streamlit>=1.22.0",
+    "wandb>=0.15.0",
+    "onnx>=1.14.0",
+    "onnxruntime>=1.15.0",
+    "pytest>=7.0.0"
+]
