@@ -109,7 +109,7 @@ Each image follows the three-column remote sensing journal layout:
 - `comparison_sample_006.png`
 """
     readme_path = os.path.join(sample_out_dir, "README.md")
-    with open(readme_path, "w") as f:
+    with open(readme_path, "w", encoding="utf-8") as f:
         f.write(readme_content)
         
     # Zip all generated files
