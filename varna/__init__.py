@@ -1,0 +1,1 @@
+# VARNA package initialization
