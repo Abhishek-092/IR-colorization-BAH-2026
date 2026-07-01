@@ -48,9 +48,8 @@ def main():
         
     elif args.command == "evaluate":
         logger.info("Evaluation stage is running...")
-        # Implement evaluation report trigger
-        from evaluation.metrics import compute_psnr
-        logger.info("Metrics calculation loaded.")
+        from evaluation.report import run_evaluation_report
+        run_evaluation_report(args.config)
         
     elif args.command == "benchmark":
         logger.info("Benchmarking execution latency...")
