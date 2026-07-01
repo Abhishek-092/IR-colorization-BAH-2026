@@ -55,7 +55,67 @@ def main():
         logger.info("Benchmarking execution latency...")
         
     elif args.command == "export":
-        logger.info("Exporting models to ONNX...")
+        logger.info("Exporting models to ONNX and running full inference...")
+        import torch
+        import tifffile
+        from training.backbone import ResNetBackbone
+        from training.sr_head import SRHead
+        from training.mixture_head import MixtureHead
+        from inference.pipeline import VARNAInferencePipeline
+        from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
+
+        # Instantiate pipeline and load weights
+        checkpoint_dir = f"experiments/{cfg.experiment_id}/checkpoints"
+        backbone = ResNetBackbone()
+        sr_head = SRHead()
+        mix_head = MixtureHead(K=cfg.training.stage2.K)
+
+        backbone.load_state_dict(torch.load(f"{checkpoint_dir}/backbone_stage1.pth", map_location="cpu"))
+        sr_head.load_state_dict(torch.load(f"{checkpoint_dir}/sr_head_stage1.pth", map_location="cpu"))
+        mix_head.load_state_dict(torch.load(f"{checkpoint_dir}/mixture_head_stage2.pth", map_location="cpu"))
+
+        pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
+        pipeline.eval()
+
+        # 1. Trace and export ONNX model
+        os.makedirs("checkpoints", exist_ok=True)
+        dummy_input = torch.randn(1, 1, 256, 256)
+        torch.onnx.export(
+            pipeline,
+            dummy_input,
+            cfg.inference.onnx.export_path,
+            input_names=["lr_tir"],
+            output_names=["sr_tir", "dominant_color"],
+            opset_version=cfg.inference.onnx.opset_version,
+            dynamic_axes={"lr_tir": {0: "batch_size"}, "sr_tir": {0: "batch_size"}, "dominant_color": {0: "batch_size"}}
+        )
+        logger.info(f"ONNX model successfully exported to {cfg.inference.onnx.export_path}")
+
+        # 2. Run full inference on the product to generate required TIF deliverables
+        prod_id = "LC09_L2SP_146044_20260701_20260701_02_T1"
+        ref_path = f"input/{prod_id}/{prod_id}_B10.TIF"
+        lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
+        
+        if os.path.exists(lr_tir_path) and os.path.exists(ref_path):
+            lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
+            # Add batch and channel dimensions
+            lr_tensor = torch.from_numpy(lr_img).unsqueeze(0).unsqueeze(0)
+            
+            with torch.no_grad():
+                sr_tir, decode_outs = pipeline(lr_tensor)
+                
+            sr_np = sr_tir.squeeze().numpy()
+            pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
+            
+            # Save GeoTIFFs
+            out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
+            out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
+            
+            export_sr_geotiff(sr_np, ref_path, out_sr_path)
+            export_colorized_geotiff(pred_rgb, ref_path, out_color_path)
+            logger.info("Inference deliverables successfully generated.")
+        else:
+            logger.warning("Could not find input files for inference run. Skipping GeoTIFF export.")
         
     elif args.command == "submit":
         logger.info("Validating deliverables and generating submission package...")
