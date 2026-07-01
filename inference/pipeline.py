@@ -86,12 +86,7 @@ class VARNAInferencePipeline(nn.Module):
     def forward(self, lr_tir):
         # Input normalization: raw DN -> [0, 1]
         TIR_MIN, TIR_MAX = 20000.0, 35000.0
-        # If input has values > 10, it is raw DN
-        is_raw = (lr_tir.max() > 10.0)
-        if is_raw:
-            lr_tir_norm = torch.clamp((lr_tir - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
-        else:
-            lr_tir_norm = lr_tir
+        lr_tir_norm = torch.clamp((lr_tir - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
 
         features = self.backbone(lr_tir_norm)
         
@@ -104,12 +99,11 @@ class VARNAInferencePipeline(nn.Module):
         # 4. FP32 Decoding
         decode_outputs = self.decode(logit_weights, means, log_scales)
         
-        # Denormalize outputs back to raw DN ranges if input was raw
-        if is_raw:
-            sr_tir = torch.clamp(sr_tir * (TIR_MAX - TIR_MIN) + TIR_MIN, TIR_MIN, TIR_MAX)
-            # Denormalize dominant and secondary colors to original 0-10000 scale
-            RGB_SCALE = 10000.0
-            decode_outputs["dominant_color"] = torch.clamp((decode_outputs["dominant_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
-            decode_outputs["secondary_color"] = torch.clamp((decode_outputs["secondary_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
+        # Denormalize outputs back to raw DN ranges
+        sr_tir_dn = torch.clamp(sr_tir * (TIR_MAX - TIR_MIN) + TIR_MIN, TIR_MIN, TIR_MAX)
+        # Denormalize dominant and secondary colors to original 0-10000 scale
+        RGB_SCALE = 10000.0
+        decode_outputs["dominant_color"] = torch.clamp((decode_outputs["dominant_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
+        decode_outputs["secondary_color"] = torch.clamp((decode_outputs["secondary_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
             
-        return sr_tir, decode_outputs
+        return sr_tir_dn, decode_outputs
