@@ -179,5 +179,77 @@ def main():
         from evaluation.sample_results import generate_sample_results
         generate_sample_results()
 
+    elif args.command == "infer":
+        logger.info("Executing Project VARNA Inference Run...")
+        weights_path = args.weights if args.weights is not None else "checkpoints/varna_final.pth"
+        if not os.path.exists(weights_path):
+            logger.error(f"Weights package not found at {weights_path}")
+            sys.exit(1)
+            
+        logger.info(f"Loading weights from {weights_path}")
+        checkpoint = torch.load(weights_path, map_location="cpu")
+        
+        backbone = ResNetBackbone()
+        sr_head = SRHead()
+        mixture_head = MixtureHead(K=checkpoint["config"]["K_components"])
+        
+        backbone.load_state_dict(checkpoint["backbone_state_dict"])
+        sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
+        mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
+        
+        from inference.pipeline import VARNAInferencePipeline
+        pipeline = VARNAInferencePipeline(backbone, sr_head, mixture_head, K=checkpoint["config"]["K_components"])
+        pipeline.eval()
+        
+        input_dir = args.input if args.input is not None else "input/LC09_L2SP_146044_20260701_20260701_02_T1"
+        if not os.path.exists(input_dir):
+            logger.error(f"Input directory/file not found: {input_dir}")
+            sys.exit(1)
+            
+        import glob
+        tif_files = glob.glob(os.path.join(input_dir, "*_B10.TIF")) + glob.glob(os.path.join(input_dir, "*_B10.tif")) + glob.glob(os.path.join(input_dir, "*_tir_200m.tif"))
+        if not tif_files:
+            prod_id = os.path.basename(input_dir)
+            lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
+            ref_path = f"input/{prod_id}/{prod_id}_B10.TIF"
+        else:
+            ref_path = tif_files[0]
+            prod_id = os.path.basename(input_dir)
+            lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
+            if not os.path.exists(lr_tir_path):
+                lr_tir_path = ref_path
+                
+        if not os.path.exists(lr_tir_path):
+            logger.error(f"Cannot find low-resolution input TIR at {lr_tir_path}")
+            sys.exit(1)
+            
+        logger.info(f"Running inference on input: {lr_tir_path}")
+        import tifffile
+        import numpy as np
+        from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
+        
+        lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
+        lr_tensor = torch.from_numpy(lr_img)
+        if lr_tensor.ndim == 2:
+            lr_tensor = lr_tensor.unsqueeze(0).unsqueeze(0)
+        elif lr_tensor.ndim == 3:
+            lr_tensor = lr_tensor.unsqueeze(0)
+            
+        with torch.no_grad():
+            sr_tir, decode_outs = pipeline(lr_tensor)
+            
+        sr_np = sr_tir.squeeze().numpy()
+        pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
+        
+        os.makedirs("output/model_outputs/tir_superresolved_100m", exist_ok=True)
+        os.makedirs("output/model_outputs/colorized_tir_100m", exist_ok=True)
+        
+        out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
+        out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
+        
+        export_sr_geotiff(sr_np, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
+        export_colorized_geotiff(pred_rgb, ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
+        logger.info(f"Inference outputs successfully generated:\n  - SR TIR: {out_sr_path}\n  - Colorized: {out_color_path}")
+
 if __name__ == "__main__":
     main()
