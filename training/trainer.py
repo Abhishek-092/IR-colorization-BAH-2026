@@ -55,7 +55,7 @@ class UnifiedTrainer:
             self.train_dataset,
             batch_size=cfg.training.stage1.batch_size,
             shuffle=True,
-            drop_last=True
+            drop_last=False
         )
         self.val_loader = DataLoader(
             self.val_dataset,
