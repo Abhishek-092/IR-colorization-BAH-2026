@@ -9,7 +9,7 @@ from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
 from inference.pipeline import VARNAInferencePipeline
-from utils.visualization import percentile_stretch
+from evaluation.visualization import percentile_stretch
 
 st.set_page_config(layout="wide", page_title="VARNA: TIR Colorization and Enhancement")
 
