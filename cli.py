@@ -65,9 +65,6 @@ def main():
     elif args.command == "benchmark":
         logger.info("Benchmarking execution latency and parameter counts...")
         import time
-        from training.backbone import ResNetBackbone
-        from training.sr_head import SRHead
-        from training.mixture_head import MixtureHead
         
         backbone = ResNetBackbone()
         sr_head = SRHead()
