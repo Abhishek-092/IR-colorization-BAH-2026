@@ -71,7 +71,7 @@ class DecodeSubmoduleFP32(nn.Module):
             "entropy": entropy
         }
 
-class VARNAInferencePipeline(nn.Module):
+class SUTRAMInferencePipeline(nn.Module):
     """
     Fused inference pipeline: Calibration -> Backbone -> SR -> Mixture -> Decode
     Designed to compile into a single execution graph.
