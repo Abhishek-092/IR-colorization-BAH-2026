@@ -57,8 +57,8 @@ else:
     selected_sample = st.sidebar.selectbox("Select Sample Patch", patch_dirs)
     
     # Load sample arrays
-    tir_200 = np.load(os.path.join(selected_sample, "tir_200m.npy"))
-    tir_100_gt = np.load(os.path.join(selected_sample, "tir_100m_512.npy"))
+    tir_200 = np.load(os.path.join(selected_sample, "tir_200m.npy")).squeeze()
+    tir_100_gt = np.load(os.path.join(selected_sample, "tir_100m_512.npy")).squeeze()
     rgb_100_gt = np.load(os.path.join(selected_sample, "rgb_100m_512.npy"))
     
     # Reshape RGB if channel-last
