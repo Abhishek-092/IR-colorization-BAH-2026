@@ -96,7 +96,7 @@ class VARNAInferencePipeline(nn.Module):
         features = self.backbone(lr_tir_norm)
         
         # 2. Stage 1 Super-Resolution
-        sr_tir = self.sr_head(features)
+        sr_tir = self.sr_head(features, lr_tir_norm)
         
         # 3. Stage 2 Color Parameter Estimation
         logit_weights, means, log_scales = self.mixture_head(features, sr_tir)
