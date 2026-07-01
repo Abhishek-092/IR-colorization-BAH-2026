@@ -107,10 +107,6 @@ def main():
     elif args.command == "export":
         logger.info("Exporting models to ONNX and running full inference...")
         import tifffile
-        from training.backbone import ResNetBackbone
-        from training.sr_head import SRHead
-        from training.mixture_head import MixtureHead
-        from inference.pipeline import VARNAInferencePipeline
         from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
 
         # Instantiate pipeline and load weights
