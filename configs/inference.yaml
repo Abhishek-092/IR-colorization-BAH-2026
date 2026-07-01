@@ -1,0 +1,13 @@
+onnx:
+  export_path: "checkpoints/varna_fused.onnx"
+  opset_version: 16
+  precision: "fp16"
+
+export:
+  output_dir: "output/model_outputs"
+  band_ordering: ["blue", "green", "red"] # Mandatory BGR order
+
+post_processing:
+  smoothing_kernel_size: 5
+  smoothing_sigma: 1.0
+  confidence_threshold: 0.15 # Abstention threshold post-hoc calibrated
