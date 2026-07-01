@@ -20,7 +20,7 @@ from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
 
-def run_evaluation_report(config_path="configs/base_config.yaml"):
+def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=None):
     """
     Evaluates the trained Stage 1 and Stage 2 models on the validation split.
     Saves JSON metrics and generates diagnostic plots.
@@ -44,24 +44,30 @@ def run_evaluation_report(config_path="configs/base_config.yaml"):
         logger.error("Validation dataset is empty. Cannot generate report.")
         return
 
-    # Load trained weights
-    checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
-    
     backbone = ResNetBackbone().to(device)
     sr_head = SRHead().to(device)
     mixture_head = MixtureHead(K=cfg.training.stage2.K).to(device)
 
-    bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
-    sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
-    mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
+    if weights_path is not None:
+        logger.info(f"Loading evaluation weights from package: {weights_path}")
+        checkpoint = torch.load(weights_path, map_location=device)
+        backbone.load_state_dict(checkpoint["backbone_state_dict"])
+        sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
+        mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
+    else:
+        # Load trained weights from default checkpoint dir
+        checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
+        bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
+        mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
 
-    if not (os.path.exists(bb_path) and os.path.exists(sr_path) and os.path.exists(mix_path)):
-        logger.error("Trained model checkpoints are missing. Please complete training first.")
-        return
+        if not (os.path.exists(bb_path) and os.path.exists(sr_path) and os.path.exists(mix_path)):
+            logger.error("Trained model checkpoints are missing. Please complete training first.")
+            return
 
-    backbone.load_state_dict(torch.load(bb_path, map_location=device))
-    sr_head.load_state_dict(torch.load(sr_path, map_location=device))
-    mixture_head.load_state_dict(torch.load(mix_path, map_location=device))
+        backbone.load_state_dict(torch.load(bb_path, map_location=device))
+        sr_head.load_state_dict(torch.load(sr_path, map_location=device))
+        mixture_head.load_state_dict(torch.load(mix_path, map_location=device))
 
     backbone.eval()
     sr_head.eval()
