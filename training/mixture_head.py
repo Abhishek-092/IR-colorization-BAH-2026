@@ -50,13 +50,10 @@ class MixtureHead(nn.Module):
         # Means: (B, K, 3, 512, 512)
         # Log-scales: (B, K, 3, 512, 512)
         logit_weights = out[:, :self.K, ...]
-        means = out[:, self.K : 4*self.K, ...].view(-index_means_shape(out, self.K))
-        log_scales = out[:, 4*self.K :, ...].view(-index_means_shape(out, self.K))
+        
+        # Reshape helpers
+        B, _, H, W = out.shape
+        means = out[:, self.K : 4*self.K, ...].view(B, self.K, 3, H, W)
+        log_scales = out[:, 4*self.K :, ...].view(B, self.K, 3, H, W)
         
         return logit_weights, means, log_scales
-
-def -index_means_shape(out, K):
-    # Shape utility to format parameters for the loss
-    # Reshapes to (B, K, 3, H, W)
-    B, _, H, W = out.shape
-    return (B, K, 3, H, W)
