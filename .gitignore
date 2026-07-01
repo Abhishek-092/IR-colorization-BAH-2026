@@ -1,0 +1,31 @@
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environment / dependencies
+.venv/
+venv/
+ENV/
+env/
+
+# Project Data (Gitignored as per BAH requirements)
+input/
+output/
+data/raw/
+data/interim/
+data/processed/
+
+# Local Experiment Tracking and Checkpoints
+experiments/
+checkpoints/
+*.pth
+*.onnx
+*.engine
+
+# OS generated files
+.DS_Store
+Thumbs.db
