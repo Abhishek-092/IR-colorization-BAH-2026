@@ -1,0 +1,19 @@
+metrics:
+  - "psnr"
+  - "ssim"
+  - "bt_rmse"
+  - "ece"
+  - "sparsification_auc"
+
+# Class name map for class-conditional evaluation (from 5-class taxonomy)
+classes:
+  0: "water"
+  1: "vegetation"
+  2: "bare_soil"
+  3: "built_up"
+  4: "clouds_shadows"
+
+benchmark:
+  warmup_runs: 5
+  profile_runs: 50
+  precision: "fp16" # Target export precision for TensorRT/ONNX

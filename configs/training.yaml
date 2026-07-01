@@ -1,0 +1,29 @@
+# Unified Trainer Parameters
+
+# Stage 1: Super-Resolution
+stage1:
+  epochs: 15
+  batch_size: 16
+  lr: 3e-4
+  weight_decay: 1e-4
+  loss_weights:
+    l1: 1.0
+    degradation: 0.5
+    edge: 0.1
+
+# Stage 2: Mixture Colorization
+stage2:
+  epochs: 15
+  batch_size: 16
+  lr: 1e-4
+  weight_decay: 1e-4
+  K: 6 # Discretized logistic mixture components (chosen from sweep {6, 7, 8})
+  epsilon: 1.0 # Scale floor (1 intensity value out of 0-255)
+  temp_init: 2.0 # Softmax temperature initial annealing
+  temp_final: 1.0 # Softmax temperature final target
+
+# Optional Stage 3: Joint Fine-tuning
+stage3:
+  epochs: 5
+  lr: 1e-5
+  batch_size: 16
