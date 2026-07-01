@@ -2,6 +2,19 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
+def percentile_stretch(img, p_min=2, p_max=98):
+    """
+    Linearly stretches the image values between p_min and p_max percentiles.
+    """
+    img_min = np.percentile(img, p_min)
+    img_max = np.percentile(img, p_max)
+    if img_max - img_min > 0:
+        stretched = (img - img_min) / (img_max - img_min)
+        stretched = np.clip(stretched, 0.0, 1.0)
+    else:
+        stretched = np.zeros_like(img)
+    return (stretched * 255).astype(np.uint8)
+
 def plot_sparsification_curve(error_curve, save_path):
     """
     Plots the error curve as a function of the fraction of rejected pixels.
