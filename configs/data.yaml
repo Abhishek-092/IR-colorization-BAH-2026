@@ -1,0 +1,25 @@
+input_dir: "input"
+output_dir: "output"
+patches_dir: "output/patches"
+downscaled_dir: "output/downscaled_data"
+
+# Scaling configurations (official baseline constants)
+scale_factors:
+  rgb_downscale: 3.33
+  tir_100m_downscale: 3.33
+  tir_200m_downscale: 6.67
+
+# Patch generation specifications
+patch_sizes:
+  tir_200m: 256
+  tir_100m: 512
+  rgb_100m: 512
+  colorization_tir: 256
+  colorization_rgb: 256
+
+# Train/Val Splits (Product IDs list)
+splits:
+  train:
+    - "LC09_L2SP_146044_20260701_20260701_02_T1"
+  val:
+    - "LC09_L2SP_146044_20260701_20260701_02_T1"
