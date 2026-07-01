@@ -13,10 +13,14 @@ logger = logging.getLogger("varna.cli")
 
 def main():
     parser = argparse.ArgumentParser(description="VARNA Unified Workflow Command Line Interface")
-    parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results"],
+    parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
                         help="Workflow command to execute")
     parser.add_argument("--config", default="configs/base_config.yaml",
                         help="Path to Hydra base configuration file")
+    parser.add_argument("--weights", default=None,
+                        help="Path to the packaged release weights file (.pth)")
+    parser.add_argument("--input", default=None,
+                        help="Path to input directory or Landsat-9 product directory")
     args = parser.parse_args()
 
     # Load configuration
@@ -51,7 +55,7 @@ def main():
     elif args.command == "evaluate":
         logger.info("Evaluation stage is running...")
         from evaluation.report import run_evaluation_report
-        run_evaluation_report(args.config)
+        run_evaluation_report(args.config, args.weights)
         
     elif args.command == "benchmark":
         logger.info("Benchmarking execution latency and parameter counts...")
