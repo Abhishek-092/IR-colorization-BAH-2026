@@ -56,12 +56,23 @@ def main():
     logger.info(f"Executing VARNA CLI command: {args.command}")
 
     if args.command == "train-stage1":
-        trainer = UnifiedTrainer(cfg)
-        trainer.train_stage1_sr()
+        checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
+        backbone_ckpt = os.path.join(checkpoint_dir, "backbone_stage1.pth")
+        sr_ckpt = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
+        if os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt):
+            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist. Skipping training to avoid repeated training.")
+        else:
+            trainer = UnifiedTrainer(cfg)
+            trainer.train_stage1_sr()
         
     elif args.command == "train-stage2":
-        trainer = UnifiedTrainer(cfg)
-        trainer.train_stage2_color()
+        checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
+        mixture_ckpt = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
+        if os.path.exists(mixture_ckpt):
+            logger.info("Stage 2 checkpoint (mixture_head) already exists. Skipping training to avoid repeated training.")
+        else:
+            trainer = UnifiedTrainer(cfg)
+            trainer.train_stage2_color()
         
     elif args.command == "evaluate":
         logger.info("Evaluation stage is running...")
