@@ -99,8 +99,8 @@ def main():
         print(f"Total Model parameters: {total_params:,}")
         
         # Latency profiling
-        from inference.pipeline import VARNAInferencePipeline
-        pipeline = VARNAInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
+        from inference.pipeline import SUTRAMInferencePipeline
+        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
         pipeline.eval()
         
         dummy_input = torch.randn(1, 1, 256, 256)
