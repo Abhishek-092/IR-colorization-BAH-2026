@@ -175,19 +175,19 @@ else:
             
             with rasterio.open(b10s[0]) as src:
                 h_100, w_100 = int(src.height / 3.33), int(src.width / 3.33)
-                tir_100 = src.read(1, out_shape=(h_100, w_100), resampling=Resampling.box)
+                tir_100 = src.read(1, out_shape=(h_100, w_100), resampling=Resampling.average)
                 
                 h_200, w_200 = int(src.height / 6.67), int(src.width / 6.67)
-                tir_200_full = src.read(1, out_shape=(h_200, w_200), resampling=Resampling.box)
+                tir_200_full = src.read(1, out_shape=(h_200, w_200), resampling=Resampling.average)
                 
             if b2s and b3s and b4s:
                 with rasterio.open(b2s[0]) as b2_src, \
                      rasterio.open(b3s[0]) as b3_src, \
                      rasterio.open(b4s[0]) as b4_src:
                     h_rgb, w_rgb = int(b2_src.height / 3.33), int(b2_src.width / 3.33)
-                    b2 = b2_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
-                    b3 = b3_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
-                    b4 = b4_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
+                    b2 = b2_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
+                    b3 = b3_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
+                    b4 = b4_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
                     rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
             else:
                 rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
