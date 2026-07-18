@@ -214,8 +214,8 @@ else:
             tir_100_gt = np.zeros((512, 512), dtype=np.float32)
             rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
 
-if tir_200 is not None:
-         
+if tir_200 is None:
+    st.stop()
     # Run Inference on the raw DN input
     input_tensor = torch.from_numpy(tir_200).float()
     if input_tensor.ndim == 2:
