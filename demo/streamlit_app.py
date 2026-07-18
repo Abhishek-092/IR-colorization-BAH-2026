@@ -126,23 +126,95 @@ def load_sutram_pipeline(K):
 
 pipeline = load_sutram_pipeline(K_components)
 
-# Dataset selection
-st.sidebar.header("📂 Dataset Explorer")
-patch_dirs = glob.glob(os.path.join("output", "patches", "*", "sample_*"))
+# Dynamic Data Explorer Mode Selection
+st.sidebar.header("📂 Data Source Explorer")
+mode = st.sidebar.radio("Select Explorer Mode", ["📂 Patch Explorer (Pre-cropped)", "🛰️ Raw Scene Explorer (input/ folder)"])
 
-if not patch_dirs:
-    st.info("No patch samples found in output/patches. Please run dataset generator first.")
+tir_200 = None
+tir_100_gt = None
+rgb_100_gt = None
+
+if mode == "📂 Patch Explorer (Pre-cropped)":
+    patch_dirs = glob.glob(os.path.join("output", "patches", "*", "sample_*"))
+    if not patch_dirs:
+        st.info("No patch samples found in output/patches. Please run dataset generator first.")
+    else:
+        selected_sample = st.sidebar.selectbox("Select Sample Patch", patch_dirs)
+        # Load sample arrays
+        tir_200 = np.load(os.path.join(selected_sample, "tir_200m.npy")).squeeze()
+        tir_100_gt = np.load(os.path.join(selected_sample, "tir_100m_512.npy")).squeeze()
+        rgb_100_gt = np.load(os.path.join(selected_sample, "rgb_100m_512.npy"))
+        # Reshape RGB if channel-last
+        if rgb_100_gt.ndim == 3 and rgb_100_gt.shape[0] != 3:
+             rgb_100_gt = np.moveaxis(rgb_100_gt, -1, 0)
 else:
-    selected_sample = st.sidebar.selectbox("Select Sample Patch", patch_dirs)
+    # Raw Scene Explorer
+    import rasterio
+    from rasterio.enums import Resampling
     
-    # Load sample arrays
-    tir_200 = np.load(os.path.join(selected_sample, "tir_200m.npy")).squeeze()
-    tir_100_gt = np.load(os.path.join(selected_sample, "tir_100m_512.npy")).squeeze()
-    rgb_100_gt = np.load(os.path.join(selected_sample, "rgb_100m_512.npy"))
+    raw_scene_dirs = [d for d in glob.glob(os.path.join("input", "*")) if os.path.isdir(d)]
+    valid_scene_dirs = []
     
-    # Reshape RGB if channel-last
-    if rgb_100_gt.ndim == 3 and rgb_100_gt.shape[0] != 3:
-         rgb_100_gt = np.moveaxis(rgb_100_gt, -1, 0)
+    # Filter only folders containing a B10 TIFF file
+    for d in raw_scene_dirs:
+        b10s = glob.glob(os.path.join(d, "*_B10.TIF")) + glob.glob(os.path.join(d, "*_B10.tif"))
+        if b10s:
+            valid_scene_dirs.append(d)
+            
+    if not valid_scene_dirs:
+        st.info("No raw scenes found in input/ containing Band 10 TIFF files.")
+    else:
+        selected_scene = st.sidebar.selectbox("Select Raw Scene Folder", valid_scene_dirs)
+        
+        try:
+            # Dynamically load and merge B2, B3, B4, and downsample B10
+            b2s = glob.glob(os.path.join(selected_scene, "*_B2.TIF")) + glob.glob(os.path.join(selected_scene, "*_B2.tif"))
+            b3s = glob.glob(os.path.join(selected_scene, "*_B3.TIF")) + glob.glob(os.path.join(selected_scene, "*_B3.tif"))
+            b4s = glob.glob(os.path.join(selected_scene, "*_B4.TIF")) + glob.glob(os.path.join(selected_scene, "*_B4.tif"))
+            b10s = glob.glob(os.path.join(selected_scene, "*_B10.TIF")) + glob.glob(os.path.join(selected_scene, "*_B10.tif"))
+            
+            with rasterio.open(b10s[0]) as src:
+                h_100, w_100 = int(src.height / 3.33), int(src.width / 3.33)
+                tir_100 = src.read(1, out_shape=(h_100, w_100), resampling=Resampling.box)
+                
+                h_200, w_200 = int(src.height / 6.67), int(src.width / 6.67)
+                tir_200_full = src.read(1, out_shape=(h_200, w_200), resampling=Resampling.box)
+                
+            if b2s and b3s and b4s:
+                with rasterio.open(b2s[0]) as b2_src, \
+                     rasterio.open(b3s[0]) as b3_src, \
+                     rasterio.open(b4s[0]) as b4_src:
+                    h_rgb, w_rgb = int(b2_src.height / 3.33), int(b2_src.width / 3.33)
+                    b2 = b2_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
+                    b3 = b3_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
+                    b4 = b4_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.box)
+                    rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
+            else:
+                rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
+                
+            # Extract center crop
+            cy_200, cx_200 = h_200 // 2, w_200 // 2
+            cy_100, cx_100 = h_100 // 2, w_100 // 2
+            
+            tir_200 = tir_200_full[cy_200-128:cy_200+128, cx_200-128:cx_200+128]
+            tir_100_gt = tir_100[cy_100-256:cy_100+256, cx_100-256:cx_100+256]
+            rgb_100_gt = rgb_100[:, cy_100-256:cy_100+256, cx_100-256:cx_100+256]
+            
+            # Boundary checks
+            if tir_200.shape != (256, 256):
+                tir_200 = np.zeros((256, 256), dtype=np.float32)
+            if tir_100_gt.shape != (512, 512):
+                tir_100_gt = np.zeros((512, 512), dtype=np.float32)
+            if rgb_100_gt.shape != (3, 512, 512):
+                rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
+                
+        except Exception as e:
+            st.sidebar.error(f"Error reading scene bands: {e}")
+            tir_200 = np.zeros((256, 256), dtype=np.float32)
+            tir_100_gt = np.zeros((512, 512), dtype=np.float32)
+            rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
+
+if tir_200 is not None:
          
     # Run Inference on the raw DN input
     input_tensor = torch.from_numpy(tir_200).float()
