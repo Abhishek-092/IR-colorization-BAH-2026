@@ -32,6 +32,8 @@ def main():
                         help="Path to the packaged release weights file (.pth)")
     parser.add_argument("--input", default=None,
                         help="Path to input directory or Landsat-9 product directory")
+    parser.add_argument("--force", action="store_true",
+                        help="Force execution (e.g. force training even if checkpoints exist)")
     args = parser.parse_args()
 
     # Load configuration
