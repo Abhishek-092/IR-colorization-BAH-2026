@@ -61,8 +61,8 @@ def main():
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
         backbone_ckpt = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_ckpt = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
-        if os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt):
-            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist. Skipping training to avoid repeated training.")
+        if os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt) and not args.force:
+            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist. Skipping training to avoid repeated training. Use --force to retrain.")
         else:
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
@@ -70,8 +70,8 @@ def main():
     elif args.command == "train-stage2":
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
         mixture_ckpt = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
-        if os.path.exists(mixture_ckpt):
-            logger.info("Stage 2 checkpoint (mixture_head) already exists. Skipping training to avoid repeated training.")
+        if os.path.exists(mixture_ckpt) and not args.force:
+            logger.info("Stage 2 checkpoint (mixture_head) already exists. Skipping training to avoid repeated training. Use --force to retrain.")
         else:
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
