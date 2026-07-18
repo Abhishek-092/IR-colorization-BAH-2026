@@ -96,8 +96,14 @@ def process_product(product_dir, output_dir):
 
 def prepare_all_datasets(input_dir="input", output_dir="output/patches"):
     """
-    Finds and processes all products in the input folder.
+    Finds and processes all products in the input folder. Skips if patches already exist.
     """
+    if os.path.exists(output_dir):
+        existing_npy = glob.glob(os.path.join(output_dir, "**", "*.npy"), recursive=True)
+        if len(existing_npy) > 0:
+            logger.info("Aligned dataset patches already exist. Skipping patch generation to avoid repeated generation.")
+            return
+
     product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
     if not product_dirs:
