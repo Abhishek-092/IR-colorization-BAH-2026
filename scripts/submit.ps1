@@ -1,4 +1,4 @@
-# Project VARNA Submission Runbook
+# Project SUTRAM Submission Runbook
 $env:PYTHONPATH="c:\IR-colorization-BAH2026"
 
 Write-Host "==================================================" -ForegroundColor Green
