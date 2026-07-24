@@ -5,14 +5,23 @@ import numpy as np
 def percentile_stretch(img, p_min=2, p_max=98):
     """
     Linearly stretches the image values between p_min and p_max percentiles.
-    Stretches RGB channels independently for 3-channel images to remove color cast.
+    Stretches RGB channels independently and excludes cloud-level saturation
+    when computing the max percentile to keep land details from being crushed.
     """
     if img.ndim == 3 and img.shape[-1] == 3:
         stretched = np.zeros_like(img)
         for c in range(3):
             ch = img[..., c]
+            is_raw_scale = ch.max() > 255.0
+            cloud_thresh = 6000.0 if is_raw_scale else 153.0
+            land_pixels = ch[ch < cloud_thresh]
+            
             ch_min = np.percentile(ch, p_min)
-            ch_max = np.percentile(ch, p_max)
+            if len(land_pixels) > 100:
+                ch_max = np.percentile(land_pixels, p_max)
+            else:
+                ch_max = np.percentile(ch, p_max)
+                
             if ch_max - ch_min > 0:
                 s = (ch - ch_min) / (ch_max - ch_min)
                 stretched[..., c] = np.clip(s, 0.0, 1.0)
