@@ -5,7 +5,28 @@ import numpy as np
 def percentile_stretch(img, p_min=2, p_max=98):
     """
     Linearly stretches the image values between p_min and p_max percentiles.
+    Stretches RGB channels independently and excludes cloud-level saturation
+    when computing the max percentile to keep land details from being crushed.
     """
+    if img.ndim == 3 and img.shape[-1] == 3:
+        stretched = np.zeros_like(img)
+        for c in range(3):
+            ch = img[..., c]
+            is_raw_scale = ch.max() > 255.0
+            cloud_thresh = 6000.0 if is_raw_scale else 153.0
+            land_pixels = ch[ch < cloud_thresh]
+            
+            ch_min = np.percentile(ch, p_min)
+            if len(land_pixels) > 100:
+                ch_max = np.percentile(land_pixels, p_max)
+            else:
+                ch_max = np.percentile(ch, p_max)
+                
+            if ch_max - ch_min > 0:
+                s = (ch - ch_min) / (ch_max - ch_min)
+                stretched[..., c] = np.clip(s, 0.0, 1.0)
+        return (stretched * 255).astype(np.uint8)
+        
     img_min = np.percentile(img, p_min)
     img_max = np.percentile(img, p_max)
     if img_max - img_min > 0:
@@ -24,7 +45,7 @@ def plot_sparsification_curve(error_curve, save_path):
     rejection_rates = np.linspace(0.0, 0.99, len(error_curve))
     
     plt.figure(figsize=(8, 6))
-    plt.plot(rejection_rates * 100, error_curve, label="VARNA", color="blue", linewidth=2)
+    plt.plot(rejection_rates * 100, error_curve, label="SUTRAM", color="blue", linewidth=2)
     
     # Oracle / ideal rejection curve (for reference)
     plt.title("Sparsification Plot (Error vs. Discarded Uncertainty %)")

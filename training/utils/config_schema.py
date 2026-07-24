@@ -3,7 +3,7 @@ from omegaconf import DictConfig
 
 logger = logging.getLogger(__name__)
 
-def validate_varna_config(cfg: DictConfig) -> bool:
+def validate_sutram_config(cfg: DictConfig) -> bool:
     """
     Validates configuration values and bounds.
     Returns True if valid, raises ValueError otherwise.

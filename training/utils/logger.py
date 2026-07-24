@@ -16,12 +16,12 @@ class JsonFormatter(logging.Formatter):
             log_data["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_data)
 
-def setup_varna_logger(output_dir):
+def setup_sutram_logger(output_dir):
     """
     Sets up a dual-handler logger (stdout + local JSON log file).
     """
     os.makedirs(output_dir, exist_ok=True)
-    log_file = os.path.join(output_dir, "varna_execution.log")
+    log_file = os.path.join(output_dir, "sutram_execution.log")
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)

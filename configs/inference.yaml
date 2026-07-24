@@ -1,5 +1,5 @@
 onnx:
-  export_path: "checkpoints/varna_fused.onnx"
+  export_path: "checkpoints/sutram_fused.onnx"
   opset_version: 16
   precision: "fp16"
 

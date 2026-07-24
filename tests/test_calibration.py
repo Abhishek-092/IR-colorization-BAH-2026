@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from varna.calibration.planck import (
+from sutram.calibration.planck import (
     dn_to_radiance,
     radiance_to_brightness_temp,
     dn_to_brightness_temp,
