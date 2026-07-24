@@ -90,13 +90,13 @@ python cli.py train-stage2
 ### 4. Compute Metrics & Evaluation
 Calculate the final validated scores and output diagnostic plots:
 ```bash
-python cli.py evaluate --weights checkpoints/varna_final.pth
+python cli.py evaluate --weights checkpoints/sutram_final.pth
 ```
 
 ### 5. Run GeoTIFF Inference
 Run inference on a raw scene and export standard GeoTIFF deliverables:
 ```bash
-python cli.py infer --weights checkpoints/varna_final.pth --input input/LC09_L2SP_146044_20260701_20260701_02_T1
+python cli.py infer --weights checkpoints/sutram_final.pth --input input/LC09_L2SP_146044_20260701_20260701_02_T1
 ```
 
 ---

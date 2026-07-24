@@ -13,7 +13,6 @@ ENV/
 env/
 
 # Project Data (Gitignored as per BAH requirements)
-input/
 output/
 data/raw/
 data/interim/
@@ -40,3 +39,6 @@ Thumbs.db
 
 # Formulas and Reference notes
 formulae and calculation/
+
+# Runbook
+RUNBOOK.md

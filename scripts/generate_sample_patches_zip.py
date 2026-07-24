@@ -18,9 +18,9 @@ def main():
     os.makedirs(sample_out_dir, exist_ok=True)
     
     # Load model
-    checkpoint_path = "checkpoints/varna_final.pth"
+    checkpoint_path = "checkpoints/sutram_final.pth"
     if not os.path.exists(checkpoint_path):
-        print("Model weights checkpoints/varna_final.pth missing. Please run prepare script first.")
+        print("Model weights checkpoints/sutram_final.pth missing. Please run prepare script first.")
         return
         
     checkpoint = torch.load(checkpoint_path, map_location="cpu")

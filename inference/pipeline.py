@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from varna.calibration.planck import dn_to_brightness_temp
+from sutram.calibration.planck import dn_to_brightness_temp
 
 class DecodeSubmoduleFP32(nn.Module):
     """
@@ -84,9 +84,18 @@ class SUTRAMInferencePipeline(nn.Module):
         self.decode = DecodeSubmoduleFP32(K=K)
 
     def forward(self, lr_tir):
-        # Input normalization: raw DN -> [0, 1]
-        TIR_MIN, TIR_MAX = 20000.0, 35000.0
-        lr_tir_norm = torch.clamp((lr_tir - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+        # Adaptive self-scaling based on peak value range
+        img_max = lr_tir.max().item()
+        if img_max <= 1.0:
+            lr_tir_norm = torch.clamp(lr_tir, 0.0, 1.0)
+            scale_mode = "normalized"
+        elif img_max <= 255.0:
+            lr_tir_norm = torch.clamp(lr_tir / 255.0, 0.0, 1.0)
+            scale_mode = "8bit"
+        else:
+            TIR_MIN, TIR_MAX = 20000.0, 35000.0
+            lr_tir_norm = torch.clamp((lr_tir - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+            scale_mode = "16bit"
 
         features = self.backbone(lr_tir_norm)
         
@@ -99,8 +108,15 @@ class SUTRAMInferencePipeline(nn.Module):
         # 4. FP32 Decoding
         decode_outputs = self.decode(logit_weights, means, log_scales)
         
-        # Denormalize outputs back to raw DN ranges
-        sr_tir_dn = torch.clamp(sr_tir * (TIR_MAX - TIR_MIN) + TIR_MIN, TIR_MIN, TIR_MAX)
+        # Denormalize outputs back to input ranges
+        if scale_mode == "normalized":
+            sr_tir_dn = torch.clamp(sr_tir, 0.0, 1.0)
+        elif scale_mode == "8bit":
+            sr_tir_dn = torch.clamp(sr_tir * 255.0, 0.0, 255.0)
+        else:
+            TIR_MIN, TIR_MAX = 20000.0, 35000.0
+            sr_tir_dn = torch.clamp(sr_tir * (TIR_MAX - TIR_MIN) + TIR_MIN, TIR_MIN, TIR_MAX)
+
         # Denormalize dominant and secondary colors to original 0-10000 scale
         RGB_SCALE = 10000.0
         decode_outputs["dominant_color"] = torch.clamp((decode_outputs["dominant_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)

@@ -1,4 +1,4 @@
-# Project VARNA Dataset Preparation Runbook
+# Project SUTRAM Dataset Preparation Runbook
 Write-Host "Starting input validation..." -ForegroundColor Cyan
 python -c "
 from data_pipeline.input_validator import validate_input_product

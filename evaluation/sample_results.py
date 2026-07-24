@@ -26,7 +26,7 @@ def percentile_stretch(img, percentiles=(2, 98)):
 def generate_sample_results():
     """
     Generates a publication-quality multi-page PDF document and high-res PNGs
-    representing the Project VARNA image enhancement outputs.
+    representing the Project SUTRAM image enhancement outputs.
     """
     output_dir = "output/sample_results"
     os.makedirs(output_dir, exist_ok=True)

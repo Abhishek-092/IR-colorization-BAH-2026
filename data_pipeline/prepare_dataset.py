@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Insert root directory into sys.path to allow running python commands without setting PYTHONPATH
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
 import glob
 import logging
 import numpy as np
@@ -87,10 +94,16 @@ def process_product(product_dir, output_dir):
                 
     logger.info(f"Generated {count} aligned patches for {prefix}")
 
-def prepare_all_datasets(input_dir="input", output_dir="output/patches"):
+def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
     """
-    Finds and processes all products in the input folder.
+    Finds and processes all products in the input folder. Skips if patches already exist unless force=True.
     """
+    if os.path.exists(output_dir) and not force:
+        existing_npy = glob.glob(os.path.join(output_dir, "**", "*.npy"), recursive=True)
+        if len(existing_npy) > 0:
+            logger.info("Aligned dataset patches already exist. Skipping patch generation to avoid repeated generation. Use --force to regenerate.")
+            return
+
     product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
     if not product_dirs:
@@ -102,5 +115,10 @@ def prepare_all_datasets(input_dir="input", output_dir="output/patches"):
         process_product(product_dir, output_dir)
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="SUTRAM Dataset Preparation")
+    parser.add_argument("--force", action="store_true", help="Force dataset patch generation even if patches already exist")
+    args = parser.parse_args()
+    
     logging.basicConfig(level=logging.INFO)
-    prepare_all_datasets()
+    prepare_all_datasets(force=args.force)
