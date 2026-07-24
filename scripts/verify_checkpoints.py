@@ -69,8 +69,8 @@ def verify_stage2():
     return True, "Passed shape and load integrity checks"
 
 def verify_final():
-    logger.info("Verifying varna_final.pth...")
-    ckpt_path = "checkpoints/varna_final.pth"
+    logger.info("Verifying sutram_final.pth...")
+    ckpt_path = "checkpoints/sutram_final.pth"
     if not os.path.exists(ckpt_path):
         return False, "Checkpoint file does not exist"
         
@@ -107,7 +107,7 @@ def main():
     s2_ok, s2_msg = verify_stage2()
     final_ok, final_msg = verify_final()
     
-    report = f"""# Project VARNA Checkpoint Verification Report
+    report = f"""# Project SUTRAM Checkpoint Verification Report
 
 This report confirms the integrity and correctness of the packaged release model checkpoints for the **Bharatiya Antriksh Hackathon (BAH) 2026** final submission.
 
@@ -117,7 +117,7 @@ This report confirms the integrity and correctness of the packaged release model
 | :--- | :--- | :--- | :--- | :--- |
 | `stage1_sr_best.pth` | Backbone + SR Head | Loaded successfully | Shape: `(1, 1, 512, 512)` | **{'PASSED' if s1_ok else 'FAILED'}** |
 | `stage2_color_best.pth` | Backbone + Mixture Head | Loaded successfully | Shape: `(1, 6, 256, 256)` | **{'PASSED' if s2_ok else 'FAILED'}** |
-| `varna_final.pth` | Unified End-to-End Pipeline | Loaded successfully | Full SR + Color check passed | **{'PASSED' if final_ok else 'FAILED'}** |
+| `sutram_final.pth` | Unified End-to-End Pipeline | Loaded successfully | Full SR + Color check passed | **{'PASSED' if final_ok else 'FAILED'}** |
 
 ### Stage 1 Details
 - **Message:** {s1_msg}
