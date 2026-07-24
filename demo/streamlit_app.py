@@ -277,7 +277,7 @@ if tir_200 is not None:
             st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", use_container_width=True)
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
-            st.image(percentile_stretch(rgb_gt_viz), caption="Ground-Truth OLI RGB (100m)", use_container_width=True)
+            st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", use_container_width=True)
 
     with tab2:
         st.write("### Variational Uncertainty Decomposition")
