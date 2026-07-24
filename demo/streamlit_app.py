@@ -13,10 +13,14 @@ import streamlit as st
 st.cache_resource.clear()
 from PIL import Image
 
+import importlib
+import inference.pipeline
+importlib.reload(inference.pipeline)
+from inference.pipeline import SUTRAMInferencePipeline
+
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
-from inference.pipeline import SUTRAMInferencePipeline
 from evaluation.visualization import percentile_stretch
 
 # Set premium page layout
