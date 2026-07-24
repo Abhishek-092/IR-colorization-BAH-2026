@@ -10,6 +10,7 @@ import glob
 import numpy as np
 import torch
 import streamlit as st
+st.cache_resource.clear()
 from PIL import Image
 
 from training.backbone import ResNetBackbone
@@ -240,6 +241,7 @@ if tir_200 is not None:
     entropy = decode_outs["entropy"].squeeze().numpy()
 
     st.sidebar.subheader("🛠️ Debug Telemetry")
+    st.sidebar.write(f"input max: {input_tensor.max().item():.2f}")
     st.sidebar.write(f"sr_np min: {sr_np.min():.2f}, max: {sr_np.max():.2f}")
     st.sidebar.write(f"pred_rgb min: {pred_rgb.min():.2f}, max: {pred_rgb.max():.2f}")
 
