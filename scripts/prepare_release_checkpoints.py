@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def main():
     logger.info("Initializing checkpoint packaging process...")
     
-    src_dir = "experiments/varna_baseline/checkpoints"
+    src_dir = "experiments/sutram_baseline/checkpoints"
     dest_dir = "checkpoints"
     os.makedirs(dest_dir, exist_ok=True)
     
@@ -30,16 +30,16 @@ def main():
     sr_state = torch.load(sr_path, map_location="cpu")
     mix_state = torch.load(mix_path, map_location="cpu")
     
-    # Load metrics from experiments/varna_baseline/metrics.json
+    # Load metrics from experiments/sutram_baseline/metrics.json
     metrics = {}
-    metrics_path = "experiments/varna_baseline/metrics.json"
+    metrics_path = "experiments/sutram_baseline/metrics.json"
     if os.path.exists(metrics_path):
         with open(metrics_path, "r") as f:
             metrics = json.load(f)
             
     # Model configuration metadata placeholder
     config_meta = {
-        "model_name": "Project VARNA",
+        "model_name": "Project SUTRAM",
         "version": "1.0.0",
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "K_components": 6,
@@ -56,7 +56,7 @@ def main():
     # Package 1: stage1_sr_best.pth
     logger.info("Packaging stage1_sr_best.pth...")
     stage1_ckpt = {
-        "model_name": "VARNA Stage 1 Super-Resolution",
+        "model_name": "SUTRAM Stage 1 Super-Resolution",
         "epoch": 15,
         "backbone_state_dict": bb_state,
         "sr_head_state_dict": sr_state,
@@ -68,7 +68,7 @@ def main():
     # Package 2: stage2_color_best.pth
     logger.info("Packaging stage2_color_best.pth...")
     stage2_ckpt = {
-        "model_name": "VARNA Stage 2 Colorization",
+        "model_name": "SUTRAM Stage 2 Colorization",
         "epoch": 15,
         "backbone_state_dict": bb_state,
         "mixture_head_state_dict": mix_state,
@@ -77,10 +77,10 @@ def main():
     }
     torch.save(stage2_ckpt, os.path.join(dest_dir, "stage2_color_best.pth"))
     
-    # Package 3: varna_final.pth
-    logger.info("Packaging varna_final.pth...")
+    # Package 3: sutram_final.pth
+    logger.info("Packaging sutram_final.pth...")
     final_ckpt = {
-        "model_name": "Project VARNA End-to-End Release",
+        "model_name": "Project SUTRAM End-to-End Release",
         "version": "1.0.0",
         "epoch": 15,
         "backbone_state_dict": bb_state,
@@ -89,7 +89,7 @@ def main():
         "metrics": metrics,
         "config": config_meta
     }
-    torch.save(final_ckpt, os.path.join(dest_dir, "varna_final.pth"))
+    torch.save(final_ckpt, os.path.join(dest_dir, "sutram_final.pth"))
     
     logger.info("All checkpoints successfully packaged in checkpoints/.")
 
