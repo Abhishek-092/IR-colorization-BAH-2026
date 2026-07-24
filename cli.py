@@ -17,13 +17,13 @@ from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
 from inference.pipeline import SUTRAMInferencePipeline
-from training.utils.config_schema import validate_varna_config
-from training.utils.logger import setup_varna_logger
+from training.utils.config_schema import validate_sutram_config
+from training.utils.logger import setup_sutram_logger
 
-logger = logging.getLogger("varna.cli")
+logger = logging.getLogger("sutram.cli")
 
 def main():
-    parser = argparse.ArgumentParser(description="VARNA Unified Workflow Command Line Interface")
+    parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
     parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
                         help="Workflow command to execute")
     parser.add_argument("--config", default="configs/base_config.yaml",
@@ -48,14 +48,14 @@ def main():
         cfg = OmegaConf.merge(base_cfg, OmegaConf.create({"data": data_cfg, "training": training_cfg, "evaluation": eval_cfg, "inference": inf_cfg}))
         
         # Setup logging
-        setup_varna_logger(cfg.data.output_dir)
-        validate_varna_config(cfg)
+        setup_sutram_logger(cfg.data.output_dir)
+        validate_sutram_config(cfg)
         
     except Exception as e:
         print(f"Error loading configuration: {e}")
         sys.exit(1)
 
-    logger.info(f"Executing VARNA CLI command: {args.command}")
+    logger.info(f"Executing SUTRAM CLI command: {args.command}")
 
     if args.command == "train-stage1":
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
@@ -195,8 +195,8 @@ def main():
         generate_sample_results()
 
     elif args.command == "infer":
-        logger.info("Executing Project VARNA Inference Run...")
-        weights_path = args.weights if args.weights is not None else "checkpoints/varna_final.pth"
+        logger.info("Executing Project SUTRAM Inference Run...")
+        weights_path = args.weights if args.weights is not None else "checkpoints/sutram_final.pth"
         if not os.path.exists(weights_path):
             logger.error(f"Weights package not found at {weights_path}")
             sys.exit(1)
