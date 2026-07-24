@@ -33,6 +33,10 @@ Thumbs.db
 # Submission Packages
 *.zip
 
+#Execution and Log Files
+*.log
+RUNBOOK.md
+
 # IDE configurations and local settings
 .vscode/
 .idea/
@@ -40,3 +44,4 @@ Thumbs.db
 
 # Formulas and Reference notes
 formulae and calculation/
+
