@@ -70,7 +70,7 @@ def package_submission():
     # (If files don't exist yet, we'll log a warning but still allow packaging in dry runs)
     validate_submission_deliverables()
     
-    zip_filename = "project_varna_submission.zip"
+    zip_filename = "project_sutram_submission.zip"
     logger.info(f"Building submission zip archive: {zip_filename}")
     
     # Files to include
