@@ -1,5 +1,5 @@
 [project]
-name = "varna"
+name = "sutram"
 version = "1.0.0"
 description = "Variational class-Aware Radiance-to-reflectance Network for thermal image colorization"
 readme = "README.md"
