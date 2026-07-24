@@ -24,7 +24,7 @@ def plot_sparsification_curve(error_curve, save_path):
     rejection_rates = np.linspace(0.0, 0.99, len(error_curve))
     
     plt.figure(figsize=(8, 6))
-    plt.plot(rejection_rates * 100, error_curve, label="VARNA", color="blue", linewidth=2)
+    plt.plot(rejection_rates * 100, error_curve, label="SUTRAM", color="blue", linewidth=2)
     
     # Oracle / ideal rejection curve (for reference)
     plt.title("Sparsification Plot (Error vs. Discarded Uncertainty %)")
