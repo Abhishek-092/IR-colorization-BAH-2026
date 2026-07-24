@@ -5,6 +5,6 @@ defaults:
   - inference
   - _self_
 
-experiment_id: "varna_baseline"
+experiment_id: "sutram_baseline"
 device: "cuda"
 seed: 42
