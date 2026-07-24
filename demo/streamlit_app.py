@@ -108,7 +108,7 @@ def load_sutram_pipeline(K):
     mix_head = MixtureHead(K=K)
     
     # Check if weights exist, otherwise initialize randomly for demo
-    checkpoint_dir = os.path.join("experiments", "varna_baseline", "checkpoints")
+    checkpoint_dir = os.path.join("experiments", "sutram_baseline", "checkpoints")
     bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
     sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
     mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
