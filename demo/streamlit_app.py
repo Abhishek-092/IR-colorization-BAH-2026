@@ -107,18 +107,26 @@ def load_sutram_pipeline(K):
     sr_head = SRHead()
     mix_head = MixtureHead(K=K)
     
-    # Check if weights exist, otherwise initialize randomly for demo
-    checkpoint_dir = os.path.join("experiments", "sutram_baseline", "checkpoints")
-    bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
-    sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
-    mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
-    
-    if os.path.exists(bb_path):
-        backbone.load_state_dict(torch.load(bb_path, map_location="cpu"))
-    if os.path.exists(sr_path):
-        sr_head.load_state_dict(torch.load(sr_path, map_location="cpu"))
-    if os.path.exists(mix_path):
-        mix_head.load_state_dict(torch.load(mix_path, map_location="cpu"))
+    # Load from the official release checkpoint package first
+    final_path = os.path.join("checkpoints", "sutram_final.pth")
+    if os.path.exists(final_path):
+        checkpoint = torch.load(final_path, map_location="cpu")
+        backbone.load_state_dict(checkpoint["backbone_state_dict"])
+        sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
+        mix_head.load_state_dict(checkpoint["mixture_head_state_dict"])
+    else:
+        # Fallback to stage-wise experiments weights if release package is missing
+        checkpoint_dir = os.path.join("experiments", "varna_baseline", "checkpoints")
+        bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
+        mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
+        
+        if os.path.exists(bb_path):
+            backbone.load_state_dict(torch.load(bb_path, map_location="cpu"))
+        if os.path.exists(sr_path):
+            sr_head.load_state_dict(torch.load(sr_path, map_location="cpu"))
+        if os.path.exists(mix_path):
+            mix_head.load_state_dict(torch.load(mix_path, map_location="cpu"))
         
     pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=K)
     pipeline.eval()
