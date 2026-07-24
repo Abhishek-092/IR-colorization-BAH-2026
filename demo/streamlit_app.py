@@ -264,9 +264,9 @@ if tir_200 is not None:
         st.write("### Stage 1: Spatial Super-Resolution (200m → 100m)")
         col1, col2 = st.columns(2)
         with col1:
-            st.image(percentile_stretch(tir_200), caption="Input TIR (200m)", use_container_width=True)
+            st.image(percentile_stretch(tir_200), caption="Input TIR (200m)", width="stretch")
         with col2:
-            st.image(percentile_stretch(sr_np), caption="Super-Resolved TIR (100m)", use_container_width=True)
+            st.image(percentile_stretch(sr_np), caption="Super-Resolved TIR (100m)", width="stretch")
 
         st.write("---")
         st.write("### Stage 2: Color Synthesis and Reflectance Mapping")
@@ -274,20 +274,20 @@ if tir_200 is not None:
         with col3:
             # Transpose to (H,W,C) for visualization
             pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
-            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", use_container_width=True)
+            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", width="stretch")
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
-            st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", use_container_width=True)
+            st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", width="stretch")
 
     with tab2:
         st.write("### Variational Uncertainty Decomposition")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.image(percentile_stretch(within_var), caption="Within-mode Variance (Radiometric Noise)", use_container_width=True)
+            st.image(percentile_stretch(within_var), caption="Within-mode Variance (Radiometric Noise)", width="stretch")
         with col2:
-            st.image(percentile_stretch(between_var), caption="Between-mode Variance (Material Ambiguity)", use_container_width=True)
+            st.image(percentile_stretch(between_var), caption="Between-mode Variance (Material Ambiguity)", width="stretch")
         with col3:
-            st.image(percentile_stretch(entropy), caption="Mixing Coefficient Entropy", use_container_width=True)
+            st.image(percentile_stretch(entropy), caption="Mixing Coefficient Entropy", width="stretch")
 
         st.write("---")
         st.write("### Confident-Abstention Masking")
@@ -300,7 +300,7 @@ if tir_200 is not None:
         
         col4, col5 = st.columns(2)
         with col4:
-            st.image(abstain_mask.astype(np.uint8) * 255, caption="Abstention Mask (White = Abstain / Fallback)", use_container_width=True)
+            st.image(abstain_mask.astype(np.uint8) * 255, caption="Abstention Mask (White = Abstain / Fallback)", width="stretch")
         with col5:
             # Overwrite abstained pixels with greyscale thermal
             calibrated_thermal = percentile_stretch(sr_np)
@@ -308,7 +308,7 @@ if tir_200 is not None:
             final_display = percentile_stretch(final_display)
             for c in range(3):
                 final_display[..., c] = np.where(abstain_mask, calibrated_thermal, final_display[..., c])
-            st.image(final_display, caption="Final Output with Greyscale Overlay on Abstentions", use_container_width=True)
+            st.image(final_display, caption="Final Output with Greyscale Overlay on Abstentions", width="stretch")
 
     with tab3:
         st.write("### Model Execution & Performance Profile")
