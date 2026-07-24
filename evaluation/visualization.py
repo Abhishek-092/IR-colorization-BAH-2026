@@ -5,7 +5,19 @@ import numpy as np
 def percentile_stretch(img, p_min=2, p_max=98):
     """
     Linearly stretches the image values between p_min and p_max percentiles.
+    Stretches RGB channels independently for 3-channel images to remove color cast.
     """
+    if img.ndim == 3 and img.shape[-1] == 3:
+        stretched = np.zeros_like(img)
+        for c in range(3):
+            ch = img[..., c]
+            ch_min = np.percentile(ch, p_min)
+            ch_max = np.percentile(ch, p_max)
+            if ch_max - ch_min > 0:
+                s = (ch - ch_min) / (ch_max - ch_min)
+                stretched[..., c] = np.clip(s, 0.0, 1.0)
+        return (stretched * 255).astype(np.uint8)
+        
     img_min = np.percentile(img, p_min)
     img_max = np.percentile(img, p_max)
     if img_max - img_min > 0:
