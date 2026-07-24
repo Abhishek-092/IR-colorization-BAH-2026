@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from varna.calibration.planck import dn_to_brightness_temp
+from sutram.calibration.planck import dn_to_brightness_temp
 
 class DecodeSubmoduleFP32(nn.Module):
     """
