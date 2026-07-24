@@ -244,11 +244,6 @@ if tir_200 is not None:
     between_var = decode_outs["between_mode_variance"].squeeze().numpy()
     entropy = decode_outs["entropy"].squeeze().numpy()
 
-    st.sidebar.subheader("🛠️ Debug Telemetry")
-    st.sidebar.write(f"input max: {input_tensor.max().item():.2f}")
-    st.sidebar.write(f"sr_np min: {sr_np.min():.2f}, max: {sr_np.max():.2f}")
-    st.sidebar.write(f"pred_rgb min: {pred_rgb.min():.2f}, max: {pred_rgb.max():.2f}")
-
     # Dynamic metrics display at the top
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
