@@ -167,7 +167,7 @@ class UnifiedTrainer:
         return total_psnr / max(1, count)
 
     def train_stage2_color(self):
-        """Trains the mixture head with backbone weights frozen."""
+        """Trains the mixture head while adapting the shared backbone."""
         logger.info("--- Starting Stage 2: Mixture Colorization Training ---")
         
         # Load backbone weights from Stage 1
@@ -207,7 +207,11 @@ class UnifiedTrainer:
         best_loss = float("inf")
 
         for epoch in range(1, epochs + 1):
+            # The backbone is trainable in Stage 2; the SR head is intentionally
+            # frozen, including its BatchNorm running statistics.
+            self.backbone.train()
             self.mixture_head.train()
+            self.sr_head.eval()
             train_loss = 0.0
 
             # Calculate Softmax temperature annealing: decay linearly from temp_init to temp_final
@@ -249,6 +253,10 @@ class UnifiedTrainer:
                 logger.info(f"New best validation color loss locked: {best_loss:.4f}")
 
     def _validate_color(self, criterion):
+        # Validation must not update BatchNorm statistics or any other model
+        # state.  Otherwise held-out data contaminates the selected checkpoint.
+        self.backbone.eval()
+        self.sr_head.eval()
         self.mixture_head.eval()
         total_loss = 0.0
         count = 0
@@ -271,7 +279,10 @@ class UnifiedTrainer:
     def _init_mixture_means_with_quantiles(self):
         """Initializes components' mean bias parameters from empirical quantiles."""
         logger.info("Running empirical quantile initialization for mixture components...")
-        report = generate_dataset_report(self.cfg.data.patches_dir)
+        report = generate_dataset_report(
+            self.cfg.data.patches_dir,
+            product_ids=list(self.cfg.data.splits.train),
+        )
         if not report:
             logger.warning("Could not build dataset report; skipping quantile mean init.")
             return
