@@ -13,9 +13,6 @@ def generate_dataset_report(patches_dir, product_ids=None):
     - Empirical quantiles of the RGB distribution (crucial for Mode-Redundancy init)
     - Total sample count and missing value verification
     """
-    # Statistics used for training-time initialization must come only from the
-    # training split.  Reading validation/test RGB here would leak target-side
-    # distribution information before model fitting.
     if product_ids is None:
         product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
     else:
@@ -30,7 +27,7 @@ def generate_dataset_report(patches_dir, product_ids=None):
 
     sample_dirs = []
     for product_dir in product_dirs:
-        sample_dirs.extend(sorted(glob.glob(os.path.join(product_dir, "sample_*"))))
+        sample_dirs.extend(sorted(glob.glob(os.path.join(product_dir, "*_patch_*"))))
     if not sample_dirs:
         logger.error(f"No patches found in {patches_dir}")
         return None
@@ -41,15 +38,15 @@ def generate_dataset_report(patches_dir, product_ids=None):
     tir_100_vals = []
     rgb_vals = []
 
-    # Sample a subset or all if small to avoid memory overflow
     step = max(1, len(sample_dirs) // 50)
     sampled_dirs = sample_dirs[::step]
 
     for sdir in sampled_dirs:
         try:
-            tir_200 = np.load(os.path.join(sdir, "tir_200m.npy"))
-            tir_100 = np.load(os.path.join(sdir, "tir_100m_512.npy"))
-            rgb = np.load(os.path.join(sdir, "rgb_100m_512.npy"))
+            patch_name = os.path.basename(sdir)
+            tir_200 = np.load(os.path.join(sdir, f"{patch_name}_tir_200m.npy"))
+            tir_100 = np.load(os.path.join(sdir, f"{patch_name}_tir_100m.npy"))
+            rgb = np.load(os.path.join(sdir, f"{patch_name}_rgb_100m.npy"))
 
             # Normalize values dynamically
             if tir_200.max() > 255.0:
