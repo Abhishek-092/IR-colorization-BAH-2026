@@ -23,6 +23,24 @@ from training.utils.logger import setup_sutram_logger
 
 logger = logging.getLogger("sutram.cli")
 
+
+def validate_release_checkpoint(checkpoint, checkpoint_path):
+    """Refuse stale or ambiguous artifacts at SUTRAM inference time."""
+    if not isinstance(checkpoint, dict):
+        raise ValueError(f"Release checkpoint is not a metadata package: {checkpoint_path}")
+    model_name = str(checkpoint.get("model_name", ""))
+    if checkpoint.get("project_id") != "SUTRAM" or "SUTRAM" not in model_name.upper():
+        raise ValueError(
+            f"Refusing non-SUTRAM or legacy checkpoint: {checkpoint_path}. "
+            "Create a fresh SUTRAM release after retraining."
+        )
+    preprocessing = checkpoint.get("config", {}).get("preprocessing", {})
+    if preprocessing.get("tir_representation") != "brightness_temperature_kelvin":
+        raise ValueError(
+            f"Release checkpoint lacks calibrated-B10 metadata: {checkpoint_path}. "
+            "Create a fresh SUTRAM release after retraining."
+        )
+
 def are_patches_newer_than(checkpoint_paths, patches_dir="output/patches"):
     """
     Checks if any patch .npy file is newer than the oldest checkpoint file.
@@ -304,6 +322,7 @@ def main():
             
         logger.info(f"Loading weights from {weights_path}")
         checkpoint = torch.load(weights_path, map_location="cpu")
+        validate_release_checkpoint(checkpoint, weights_path)
         
         backbone = ResNetBackbone()
         sr_head = SRHead()
