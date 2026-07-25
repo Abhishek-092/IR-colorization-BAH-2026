@@ -110,9 +110,9 @@ def process_product(product_dir, output_dir, manifest_writer):
             x_start_200 = x_start_100 // 2
             tir_200_patch = tir_200m[y_start_200:y_start_200 + patch_size_200, x_start_200:x_start_200 + patch_size_200]
             
-            # Nodata check (pixels exactly equal to 0)
-            nodata_count = np.sum(tir_100_patch == 0)
-            nodata_fraction = float(nodata_count / tir_100_patch.size)
+            # Nodata check (pixels exactly equal to 0 across TIR and RGB)
+            nodata_mask = (tir_100_patch == 0) | (rgb_patch[0] == 0) | (rgb_patch[1] == 0) | (rgb_patch[2] == 0)
+            nodata_fraction = float(np.sum(nodata_mask) / tir_100_patch.size)
             
             # Filter threshold: reject patches with > 10% nodata
             if nodata_fraction > 0.10:
