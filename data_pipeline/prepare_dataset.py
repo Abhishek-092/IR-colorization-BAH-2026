@@ -60,7 +60,7 @@ def process_product(product_dir, output_dir):
         tir_200m = src.read(1, out_shape=(target_H_200, target_W_200), resampling=Resampling.average).astype(np.float32)
         
     rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0) # (3, H, W)
-    prefix = product_name.split('_')[0]
+    prefix = product_name
     
     patch_size_100 = 512
     patch_size_200 = 256
@@ -99,8 +99,7 @@ def is_product_dirty(product_dir, output_dir):
     Checks if the patches for a product are missing or if the raw TIF files are newer.
     """
     product_name = os.path.basename(product_dir.rstrip('/\\'))
-    prefix = product_name.split('_')[0]
-    target_dir = os.path.join(output_dir, prefix)
+    target_dir = os.path.join(output_dir, product_name)
     
     if not os.path.exists(target_dir):
         return True
