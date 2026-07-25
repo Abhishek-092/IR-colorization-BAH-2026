@@ -40,8 +40,8 @@ def process_product(product_dir, output_dir, manifest_writer):
         H, W = src.shape
 
     # Calculate downscaled dimensions at 100m (downscale factor ~ 3.33)
-    target_H_100 = int(round(H / 3.33))
-    target_W_100 = int(round(W / 3.33))
+    target_H_100 = (int(round(H / 3.33)) // 2) * 2
+    target_W_100 = (int(round(W / 3.33)) // 2) * 2
     
     # Enforce minimum patch dimensions
     target_H_100 = max(512, target_H_100)
