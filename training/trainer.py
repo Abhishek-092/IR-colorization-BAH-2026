@@ -214,9 +214,8 @@ class UnifiedTrainer:
                 target_rgb = batch["rgb_100m_512"].to(self.device)
 
                 optimizer.zero_grad()
-                with torch.no_grad():
-                    features = self.backbone(lr_tir)
-                    pred_sr = self.sr_head(features, lr_tir)
+                features = self.backbone(lr_tir)
+                pred_sr = self.sr_head(features, lr_tir)
 
                 # Predict mixture parameters
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
