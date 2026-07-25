@@ -120,10 +120,9 @@ def test_split_validator_helper():
     with pytest.raises(ValueError, match="INVALID_SOURCE_DATA"):
         run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
         
-    # 2. Test split leakage logic on clean mock dataset splits containing only the valid scene
-    valid_scene = "LC09_L2SP_146044_20260701_20260701_02_T1"
+    # 2. Test split leakage logic on clean mock dataset splits (using non-existent paths to bypass file checks, but satisfying LC08/LC09 sensor presence check)
     clean_splits = {
-        "train": [valid_scene],
+        "train": ["LC08_L2SP_134051_mock", "LC09_L2SP_146044_mock"],
         "val": [],
         "test": []
     }
@@ -132,8 +131,8 @@ def test_split_validator_helper():
     
     # Leaked splits should raise Product Leakage
     leaked_splits = {
-        "train": [valid_scene],
-        "val": [valid_scene],
+        "train": ["LC08_L2SP_134051_mock", "LC09_L2SP_146044_mock"],
+        "val": ["LC08_L2SP_134051_mock"],
         "test": []
     }
     with pytest.raises(ValueError, match="Product leakage detected"):
