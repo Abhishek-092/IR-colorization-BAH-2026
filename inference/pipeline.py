@@ -84,15 +84,16 @@ class SUTRAMInferencePipeline(nn.Module):
         self.mixture_head = mixture_head
         self.decode = DecodeSubmoduleFP32(K=K)
 
-    def forward(self, lr_tir):
-        # Determine scale mode for denormalization
-        img_max = lr_tir.max().item()
-        if img_max <= 1.0:
-            scale_mode = "normalized"
-        elif img_max <= 255.0:
-            scale_mode = "8bit"
-        else:
-            scale_mode = "16bit"
+    def forward(self, lr_tir, scale_mode=None):
+        if scale_mode is None:
+            # Determine scale mode for denormalization
+            img_max = lr_tir.max().item()
+            if img_max <= 1.0:
+                scale_mode = "normalized"
+            elif img_max <= 255.0:
+                scale_mode = "8bit"
+            else:
+                scale_mode = "16bit"
             
         # Adaptive self-scaling based on peak value range using centralized helper
         lr_tir_norm = normalize_tir(lr_tir)
