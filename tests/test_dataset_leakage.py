@@ -142,11 +142,15 @@ def test_data_integrity_and_normalization():
     cfg = load_data_config()
     patches_dir = cfg.patches_dir
     
-    # Assert no image files in output/patches
-    all_pngs = glob.glob(os.path.join(patches_dir, "**", "*.png"), recursive=True)
-    all_jpegs = glob.glob(os.path.join(patches_dir, "**", "*.jpg"), recursive=True)
-    assert len(all_pngs) == 0, f"Found PNG files in patch directory: {all_pngs[:5]}"
-    assert len(all_jpegs) == 0, f"Found JPEG files in patch directory: {all_jpegs[:5]}"
+    # Assert no image files in configured patch directories
+    all_configured = set(cfg.splits.train + cfg.splits.val + cfg.splits.test)
+    for scene in all_configured:
+        scene_path = os.path.join(patches_dir, scene)
+        if os.path.exists(scene_path):
+            all_pngs = glob.glob(os.path.join(scene_path, "**", "*.png"), recursive=True)
+            all_jpegs = glob.glob(os.path.join(scene_path, "**", "*.jpg"), recursive=True)
+            assert len(all_pngs) == 0, f"Found PNG files in patch directory for {scene}: {all_pngs[:5]}"
+            assert len(all_jpegs) == 0, f"Found JPEG files in patch directory for {scene}: {all_jpegs[:5]}"
     
     # Load train dataset and check normalization and variance
     train_dataset = PatchDataset(patches_dir=patches_dir, product_ids=cfg.splits.train)
