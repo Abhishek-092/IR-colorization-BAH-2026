@@ -71,7 +71,7 @@ def get_updated_product_ids(checkpoint_paths, patches_dir="output/patches"):
 
 def main():
     parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
-    parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
+    parser.add_argument("command", choices=["train-stage1", "train-stage2", "validate-dataset", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
                         help="Workflow command to execute")
     parser.add_argument("--config", default="configs/base_config.yaml",
                         help="Path to Hydra base configuration file")
