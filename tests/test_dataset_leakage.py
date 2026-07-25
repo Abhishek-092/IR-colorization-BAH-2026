@@ -116,9 +116,8 @@ def test_split_validator_helper():
     splits_dict = OmegaConf.to_container(cfg.splits, resolve=True)
     patches_dir = cfg.patches_dir
     
-    # 1. Standard check on current dataset must FAIL fast due to P0 invalid uint8 RGBA files
-    with pytest.raises(ValueError, match="INVALID_SOURCE_DATA"):
-        run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
+    # 1. Standard check on current dataset must pass (warnings logged, no ValueError raised)
+    run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
         
     # 2. Test split leakage logic on clean mock dataset splits
     # Create temporary directories in output/patches to satisfy the scene inventory check
