@@ -38,3 +38,21 @@ def test_end_to_end_dn_to_kelvin():
     
     # 30000 -> rad ~ 10.126 -> Kelvin ~ 296 Kelvin (approx room temp)
     assert 280.0 < t_b[0] < 310.0
+
+def test_planck_roundtrip():
+    """Verify DN -> Brightness Temp -> DN roundtrip parity for numpy and torch."""
+    import torch
+    from sutram.calibration.planck import brightness_temp_to_dn
+    
+    # Numpy roundtrip
+    dns_np = np.array([20000, 25000, 30000, 35000], dtype=np.float32)
+    tb_np = dn_to_brightness_temp(dns_np)
+    dns_rec_np = brightness_temp_to_dn(tb_np)
+    np.testing.assert_allclose(dns_np, dns_rec_np, rtol=1e-4)
+    
+    # Torch roundtrip
+    dns_th = torch.tensor([20000.0, 25000.0, 30000.0, 35000.0])
+    tb_th = dn_to_brightness_temp(dns_th)
+    dns_rec_th = brightness_temp_to_dn(tb_th)
+    torch.testing.assert_close(dns_th, dns_rec_th, rtol=1e-4, atol=1e-4)
+
