@@ -3,7 +3,7 @@ import torch
 
 from sutram.calibration.planck import dn_to_brightness_temp, brightness_temp_to_dn
 
-TB_MIN, TB_MAX = 278.2618, 314.5097
+TB_MIN, TB_MAX = 278.30386, 314.5386
 
 def normalize_tir(arr, dtype=None):
     """
