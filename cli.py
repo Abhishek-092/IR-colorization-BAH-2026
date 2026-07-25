@@ -117,6 +117,14 @@ def main():
         if checkpoints_exist and not data_updated and not args.force:
             logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
+            # Pre-training validation gate: fail fast on P0 integrity errors
+            from data_pipeline.split_validator import run_all_validation
+            run_all_validation(
+                OmegaConf.to_container(cfg.data.splits, resolve=True),
+                cfg.data.patches_dir,
+                input_dir=cfg.data.input_dir
+            )
+            
             if checkpoints_exist and data_updated:
                 logger.info("Auto-detected training dataset updates. Filtering to newer products...")
                 updated_pids = get_updated_product_ids([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
@@ -137,6 +145,14 @@ def main():
         if checkpoint_exists and not data_updated and not args.force:
             logger.info("Stage 2 checkpoint (mixture_head) already exists and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
+            # Pre-training validation gate: fail fast on P0 integrity errors
+            from data_pipeline.split_validator import run_all_validation
+            run_all_validation(
+                OmegaConf.to_container(cfg.data.splits, resolve=True),
+                cfg.data.patches_dir,
+                input_dir=cfg.data.input_dir
+            )
+            
             if checkpoint_exists and data_updated:
                 logger.info("Auto-detected training dataset updates. Filtering to newer products...")
                 updated_pids = get_updated_product_ids([mixture_ckpt], patches_dir=cfg.data.patches_dir)
@@ -146,6 +162,20 @@ def main():
                     cfg.data.splits.val = updated_pids
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
+            
+    elif args.command == "validate-dataset":
+        logger.info("Executing dataset validation gate...")
+        from data_pipeline.split_validator import run_all_validation
+        try:
+            run_all_validation(
+                OmegaConf.to_container(cfg.data.splits, resolve=True),
+                cfg.data.patches_dir,
+                input_dir=cfg.data.input_dir
+            )
+            logger.info("Dataset validation gate: SUCCESS! All pre-training integrity checks passed.")
+        except Exception as e:
+            logger.error(f"Dataset validation gate: FAILED! {e}")
+            sys.exit(1)
         
     elif args.command == "evaluate":
         logger.info(f"Evaluation stage is running on split: {args.split}...")
