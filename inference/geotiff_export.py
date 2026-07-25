@@ -73,11 +73,11 @@ def export_colorized_geotiff(color_array, reference_tif_path, output_path):
         })
 
     with rasterio.open(output_path, 'w', **profile) as dst:
-        # Write channel 0 (Blue) to Band 1
-        dst.write(color_array[0], 1)
+        # Write channel 2 (Blue) to Band 1
+        dst.write(color_array[2], 1)
         # Write channel 1 (Green) to Band 2
         dst.write(color_array[1], 2)
-        # Write channel 2 (Red) to Band 3
-        dst.write(color_array[2], 3)
+        # Write channel 0 (Red) to Band 3
+        dst.write(color_array[0], 3)
         
     logger.info(f"Successfully saved BGR colorized GeoTIFF to {output_path}")
