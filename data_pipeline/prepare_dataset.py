@@ -94,16 +94,34 @@ def process_product(product_dir, output_dir):
                 
     logger.info(f"Generated {count} aligned patches for {prefix}")
 
+def is_product_dirty(product_dir, output_dir):
+    """
+    Checks if the patches for a product are missing or if the raw TIF files are newer.
+    """
+    product_name = os.path.basename(product_dir.rstrip('/\\'))
+    prefix = product_name.split('_')[0]
+    target_dir = os.path.join(output_dir, prefix)
+    
+    if not os.path.exists(target_dir):
+        return True
+        
+    npy_files = glob.glob(os.path.join(target_dir, "**", "*.npy"), recursive=True)
+    if not npy_files:
+        return True
+        
+    min_npy_mtime = min(os.path.getmtime(f) for f in npy_files)
+    
+    tif_files = glob.glob(os.path.join(product_dir, "*.TIF")) + glob.glob(os.path.join(product_dir, "*.tif"))
+    if not tif_files:
+        return False
+        
+    max_tif_mtime = max(os.path.getmtime(f) for f in tif_files)
+    return max_tif_mtime > min_npy_mtime
+
 def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
     """
-    Finds and processes all products in the input folder. Skips if patches already exist unless force=True.
+    Finds and processes all products in the input folder. Auto-detects updates or new directories.
     """
-    if os.path.exists(output_dir) and not force:
-        existing_npy = glob.glob(os.path.join(output_dir, "**", "*.npy"), recursive=True)
-        if len(existing_npy) > 0:
-            logger.info("Aligned dataset patches already exist. Skipping patch generation to avoid repeated generation. Use --force to regenerate.")
-            return
-
     product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
     if not product_dirs:
@@ -111,8 +129,18 @@ def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=F
         return
         
     os.makedirs(output_dir, exist_ok=True)
+    
+    any_processed = False
     for product_dir in product_dirs:
-        process_product(product_dir, output_dir)
+        product_name = os.path.basename(product_dir.rstrip('/\\'))
+        if force or is_product_dirty(product_dir, output_dir):
+            process_product(product_dir, output_dir)
+            any_processed = True
+        else:
+            logger.info(f"Product {product_name} patches are up to date. Skipping.")
+            
+    if not any_processed:
+        logger.info("All dataset patches are up to date. Use --force to regenerate anyway.")
 
 if __name__ == "__main__":
     import argparse
