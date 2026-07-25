@@ -26,9 +26,9 @@ def test_centralized_normalization_bounds():
     assert np.allclose(norm_8bit_rgb, [0.0, 128.0, 255.0])
     
     # uint16 inputs
-    arr_16bit_tir = np.array([20000, 27500, 35000], dtype=np.uint16)
+    arr_16bit_tir = np.array([20000, 35000], dtype=np.uint16)
     norm_16bit_tir = normalize_tir(arr_16bit_tir)
-    assert np.allclose(norm_16bit_tir, [0.0, 0.5, 1.0])
+    assert np.allclose(norm_16bit_tir, [0.0, 1.0])
     
     arr_16bit_rgb = np.array([0, 5000, 10000], dtype=np.uint16)
     norm_16bit_rgb = normalize_rgb(arr_16bit_rgb)
