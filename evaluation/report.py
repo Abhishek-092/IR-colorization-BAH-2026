@@ -166,7 +166,7 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
         psnr_val = compute_psnr(sub_sr_preds, sub_sr_targets, peak=1.0)
         rmse_val = compute_bt_rmse(sub_sr_preds, sub_sr_targets)
         ssim_val = np.mean([compute_ssim(p, t) for p, t in zip(sub_sr_preds, sub_sr_targets)])
-        ece_val = compute_regression_ece(sub_rgb_preds, sub_rgb_scales, sub_rgb_targets)
+        ece_val, empirical_coverages = compute_regression_ece(sub_rgb_preds, sub_rgb_scales, sub_rgb_targets)
         
         abs_errors = np.abs(sub_rgb_preds - sub_rgb_targets).mean(axis=1)
         mean_scales = sub_rgb_scales.mean(axis=1)
@@ -177,6 +177,7 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
             "ssim": float(ssim_val),
             "bt_rmse": float(rmse_val),
             "ece": float(ece_val),
+            "ece_bins": empirical_coverages,
             "sparsification_auc": float(auc_val)
         }
 
@@ -235,9 +236,8 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
         os.path.join("experiments", cfg.experiment_id, "validation_plots", f"sparsification_curve_{split}.png")
     )
     
-    dummy_ece_bins = np.linspace(0.1, 0.9, 10) * (1.0 - overall_metrics["ece"])
     plot_calibration_error(
-        dummy_ece_bins,
+        overall_metrics["ece_bins"],
         os.path.join("experiments", cfg.experiment_id, "validation_plots", f"calibration_reliability_{split}.png")
     )
 
