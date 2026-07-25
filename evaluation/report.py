@@ -211,7 +211,9 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
     }
 
     # Save to metrics.json
-    metrics_path = os.path.join("experiments", cfg.experiment_id, f"metrics_{split}.json")
+    metrics_dir = os.path.join("experiments", cfg.experiment_id)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_path = os.path.join(metrics_dir, f"metrics_{split}.json")
     with open(metrics_path, "w") as f:
         json.dump(report_data, f, indent=4)
     logger.info(f"Saved evaluation metrics to: {metrics_path}")
