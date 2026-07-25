@@ -16,11 +16,16 @@ class PatchDataset(Dataset):
         self.augment = augment
         self.samples = []
 
-        # Find product directories
+        # Find product directories matching prefix or exact ID
         if product_ids is None:
             product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
         else:
-            product_dirs = [os.path.join(patches_dir, pid) for pid in product_ids if os.path.isdir(os.path.join(patches_dir, pid))]
+            product_dirs = []
+            for d in glob.glob(os.path.join(patches_dir, "*")):
+                if os.path.isdir(d):
+                    basename = os.path.basename(d)
+                    if any(basename.startswith(pid) for pid in product_ids):
+                        product_dirs.append(d)
 
         for pdir in product_dirs:
             p_samples = sorted(glob.glob(os.path.join(pdir, "sample_*")))
