@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from utils.normalization import normalize_tir, normalize_rgb
 
 class PatchDataset(Dataset):
     """
@@ -60,29 +61,9 @@ class PatchDataset(Dataset):
         tir_100 = np.load(tir_100m_path).astype(np.float32)
         rgb_100 = np.load(rgb_100m_path).astype(np.float32)
 
-        # Dynamic adaptive normalization for TIR (B10) to [0, 1]
-        def normalize_tir(arr):
-            arr_max = arr.max()
-            if arr_max <= 1.0:
-                return np.clip(arr, 0.0, 1.0)
-            elif arr_max <= 255.0:
-                return np.clip(arr / 255.0, 0.0, 1.0)
-            else:
-                TIR_MIN, TIR_MAX = 20000.0, 35000.0
-                return np.clip((arr - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
-
+        # Centralized normalization
         tir_200 = normalize_tir(tir_200)
         tir_100 = normalize_tir(tir_100)
-
-        # Dynamic adaptive normalization for RGB to [0, 255]
-        def normalize_rgb(arr):
-            arr_max = arr.max()
-            if arr_max > 255.0:
-                RGB_SCALE = 10000.0
-                return np.clip((arr / RGB_SCALE) * 255.0, 0.0, 255.0)
-            else:
-                return np.clip(arr, 0.0, 255.0)
-
         rgb_100 = normalize_rgb(rgb_100)
 
         # Expand dims if single-channel to (C, H, W)
