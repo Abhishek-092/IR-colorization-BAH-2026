@@ -49,10 +49,20 @@ def normalize_tir(arr, dtype=None):
         # 16-bit Landsat raw
         # Convert to Brightness Temperature first (Kelvin)
         tb = dn_to_brightness_temp(arr)
+        
+        # Robust dynamic expansion to avoid clipping saturation over cold/hot terrains
         if is_tensor:
-            return torch.clamp((tb - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+            tb_min_val = min(278.30386, float(tb.min().item()))
+            tb_max_val = max(314.5386, float(tb.max().item()))
+            if tb_max_val - tb_min_val > 1e-5:
+                return torch.clamp((tb - tb_min_val) / (tb_max_val - tb_min_val), 0.0, 1.0)
+            return torch.zeros_like(tb)
         else:
-            return np.clip((tb - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+            tb_min_val = min(278.30386, float(tb.min()))
+            tb_max_val = max(314.5386, float(tb.max()))
+            if tb_max_val - tb_min_val > 1e-5:
+                return np.clip((tb - tb_min_val) / (tb_max_val - tb_min_val), 0.0, 1.0)
+            return np.zeros_like(tb)
 
 def denormalize_tir(arr, scale_mode):
     """
