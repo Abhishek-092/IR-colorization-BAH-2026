@@ -34,13 +34,25 @@ def generate_dataset_report(patches_dir):
             tir_100 = np.load(os.path.join(sdir, "tir_100m_512.npy"))
             rgb = np.load(os.path.join(sdir, "rgb_100m_512.npy"))
 
+            # Normalize values dynamically
+            if tir_200.max() > 255.0:
+                tir_200 = np.clip((tir_200 - 20000.0) / 15000.0, 0.0, 1.0)
+            else:
+                tir_200 = np.clip(tir_200 / 255.0, 0.0, 1.0)
+
+            if tir_100.max() > 255.0:
+                tir_100 = np.clip((tir_100 - 20000.0) / 15000.0, 0.0, 1.0)
+            else:
+                tir_100 = np.clip(tir_100 / 255.0, 0.0, 1.0)
+
+            if rgb.ndim == 3 and rgb.shape[0] != 3:
+                rgb = np.moveaxis(rgb, -1, 0)
+            if rgb.max() > 255.0:
+                rgb = np.clip((rgb / 10000.0) * 255.0, 0.0, 255.0)
+
             # Downsample for faster statistics
             tir_200_vals.append(tir_200[::4, ::4].flatten())
             tir_100_vals.append(tir_100[::8, ::8].flatten())
-            
-            # RGB shape (C, H, W) or (H, W, C)
-            if rgb.ndim == 3 and rgb.shape[0] != 3:
-                rgb = np.moveaxis(rgb, -1, 0)
             rgb_vals.append(rgb[:, ::8, ::8].reshape(3, -1))
 
         except Exception as e:
