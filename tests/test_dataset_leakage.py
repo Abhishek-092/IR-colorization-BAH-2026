@@ -120,23 +120,35 @@ def test_split_validator_helper():
     with pytest.raises(ValueError, match="INVALID_SOURCE_DATA"):
         run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
         
-    # 2. Test split leakage logic on clean mock dataset splits (using non-existent paths to bypass file checks, but satisfying LC08/LC09 sensor presence check)
-    clean_splits = {
-        "train": ["LC08_L2SP_134051_mock", "LC09_L2SP_146044_mock"],
-        "val": [],
-        "test": []
-    }
-    # Should pass without leakage
-    run_all_validation(clean_splits, patches_dir, input_dir=cfg.input_dir)
+    # 2. Test split leakage logic on clean mock dataset splits
+    # Create temporary directories in output/patches to satisfy the scene inventory check
+    mock_l8 = "LC08_L2SP_134051_mock"
+    mock_l9 = "LC09_L2SP_146044_mock"
+    os.makedirs(os.path.join(patches_dir, mock_l8), exist_ok=True)
+    os.makedirs(os.path.join(patches_dir, mock_l9), exist_ok=True)
     
-    # Leaked splits should raise Product Leakage
-    leaked_splits = {
-        "train": ["LC08_L2SP_134051_mock", "LC09_L2SP_146044_mock"],
-        "val": ["LC08_L2SP_134051_mock"],
-        "test": []
-    }
-    with pytest.raises(ValueError, match="Product leakage detected"):
-        run_all_validation(leaked_splits, patches_dir, input_dir=cfg.input_dir)
+    try:
+        clean_splits = {
+            "train": [mock_l8, mock_l9],
+            "val": [],
+            "test": []
+        }
+        # Should pass without leakage
+        run_all_validation(clean_splits, patches_dir, input_dir=cfg.input_dir)
+        
+        # Leaked splits should raise Product Leakage
+        leaked_splits = {
+            "train": [mock_l8, mock_l9],
+            "val": [mock_l8],
+            "test": []
+        }
+        with pytest.raises(ValueError, match="Product leakage detected"):
+            run_all_validation(leaked_splits, patches_dir, input_dir=cfg.input_dir)
+    finally:
+        # Clean up temporary mock directories
+        import shutil
+        shutil.rmtree(os.path.join(patches_dir, mock_l8), ignore_errors=True)
+        shutil.rmtree(os.path.join(patches_dir, mock_l9), ignore_errors=True)
 
 def test_data_integrity_and_normalization():
     """
