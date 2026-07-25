@@ -70,6 +70,15 @@ class UnifiedTrainer:
     def train_stage1_sr(self):
         """Trains the backbone and SR head deterministically."""
         logger.info("--- Starting Stage 1: Super-Resolution Training ---")
+        
+        bb_path = os.path.join(self.checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth")
+        if os.path.exists(bb_path):
+            self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
+            logger.info("Loaded existing Stage 1 backbone weights successfully.")
+        if os.path.exists(sr_path):
+            self.sr_head.load_state_dict(torch.load(sr_path, map_location=self.device))
+            logger.info("Loaded existing Stage 1 SR head weights successfully.")
         optimizer = optim.AdamW(
             list(self.backbone.parameters()) + list(self.sr_head.parameters()),
             lr=self.cfg.training.stage1.lr,
