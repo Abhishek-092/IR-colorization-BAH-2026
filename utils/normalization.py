@@ -1,9 +1,15 @@
 import numpy as np
 import torch
 
+from sutram.calibration.planck import dn_to_brightness_temp, brightness_temp_to_dn
+
+TB_MIN, TB_MAX = 278.2618, 314.5097
+
 def normalize_tir(arr, dtype=None):
     """
     Centralized TIR (B10) normalization to [0.0, 1.0].
+    If 16-bit raw Landsat, converts raw DN to Brightness Temperature (Kelvin)
+    via Planck calibration, then normalizes to [0.0, 1.0].
     Handles numpy arrays and torch Tensors.
     """
     is_tensor = isinstance(arr, torch.Tensor)
@@ -41,11 +47,38 @@ def normalize_tir(arr, dtype=None):
             return np.clip(arr / 255.0, 0.0, 1.0)
     else:
         # 16-bit Landsat raw
-        TIR_MIN, TIR_MAX = 20000.0, 35000.0
+        # Convert to Brightness Temperature first (Kelvin)
+        tb = dn_to_brightness_temp(arr)
         if is_tensor:
-            return torch.clamp((arr - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+            return torch.clamp((tb - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
         else:
-            return np.clip((arr - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
+            return np.clip((tb - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+
+def denormalize_tir(arr, scale_mode):
+    """
+    Centralized TIR (B10) denormalization.
+    Inverts normalize_tir back to raw range (either normalized, 8bit, or 16bit raw).
+    """
+    is_tensor = isinstance(arr, torch.Tensor)
+    if scale_mode == "normalized":
+        if is_tensor:
+            return torch.clamp(arr, 0.0, 1.0)
+        return np.clip(arr, 0.0, 1.0)
+    elif scale_mode == "8bit":
+        if is_tensor:
+            return torch.clamp(arr * 255.0, 0.0, 255.0)
+        return np.clip(arr * 255.0, 0.0, 255.0)
+    else:
+        # 16-bit Landsat raw: [0, 1] -> Kelvin -> DN
+        if is_tensor:
+            tb = arr * (TB_MAX - TB_MIN) + TB_MIN
+            dn = brightness_temp_to_dn(tb)
+            return torch.clamp(dn, 20000.0, 35000.0)
+        else:
+            tb = arr * (TB_MAX - TB_MIN) + TB_MIN
+            dn = brightness_temp_to_dn(tb)
+            return np.clip(dn, 20000.0, 35000.0)
+
 
 def normalize_rgb(arr, dtype=None):
     """
