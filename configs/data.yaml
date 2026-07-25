@@ -20,8 +20,7 @@ patch_sizes:
 # Train/Val Splits (Product IDs list)
 splits:
   train:
-    - "LC09"
+    - "LC08"
     - "demo"
   val:
     - "LC09"
-    - "demo"
