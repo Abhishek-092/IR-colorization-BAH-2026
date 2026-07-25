@@ -83,18 +83,30 @@ def main():
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
         backbone_ckpt = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_ckpt = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
-        if os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt) and not args.force:
-            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist. Skipping training to avoid repeated training. Use --force to retrain.")
+        
+        checkpoints_exist = os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt)
+        data_updated = are_patches_newer_than([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
+        
+        if checkpoints_exist and not data_updated and not args.force:
+            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
+            if checkpoints_exist and data_updated:
+                logger.info("Auto-detected training dataset updates. Retraining Stage 1...")
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
         
     elif args.command == "train-stage2":
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
         mixture_ckpt = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
-        if os.path.exists(mixture_ckpt) and not args.force:
-            logger.info("Stage 2 checkpoint (mixture_head) already exists. Skipping training to avoid repeated training. Use --force to retrain.")
+        
+        checkpoint_exists = os.path.exists(mixture_ckpt)
+        data_updated = are_patches_newer_than([mixture_ckpt], patches_dir=cfg.data.patches_dir)
+        
+        if checkpoint_exists and not data_updated and not args.force:
+            logger.info("Stage 2 checkpoint (mixture_head) already exists and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
+            if checkpoint_exists and data_updated:
+                logger.info("Auto-detected training dataset updates. Retraining Stage 2...")
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
         
