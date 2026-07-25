@@ -48,16 +48,16 @@ def are_patches_newer_than(checkpoint_paths, patches_dir="output/patches"):
     if not os.path.exists(patches_dir):
         return False
         
-    npy_files = glob.glob(os.path.join(patches_dir, "**", "*.npy"), recursive=True)
-    if not npy_files:
+    manifest_path = os.path.join(patches_dir, "manifest.csv")
+    if not os.path.exists(manifest_path):
         return False
         
-    max_npy_mtime = max(os.path.getmtime(f) for f in npy_files)
+    manifest_mtime = os.path.getmtime(manifest_path)
     
     for ckpt in checkpoint_paths:
         if not os.path.exists(ckpt):
             return True
-        if max_npy_mtime > os.path.getmtime(ckpt):
+        if manifest_mtime > os.path.getmtime(ckpt):
             return True
             
     return False
@@ -78,11 +78,8 @@ def get_updated_product_ids(checkpoint_paths, patches_dir="output/patches"):
     updated_pids = []
     
     for p_dir in product_dirs:
-        npy_files = glob.glob(os.path.join(p_dir, "**", "*.npy"), recursive=True)
-        if not npy_files:
-            continue
-        max_npy_mtime = max(os.path.getmtime(f) for f in npy_files)
-        if max_npy_mtime > min_ckpt_mtime:
+        # Check if the product directory's own modification time is newer
+        if os.path.getmtime(p_dir) > min_ckpt_mtime:
             updated_pids.append(os.path.basename(p_dir))
             
     return updated_pids
