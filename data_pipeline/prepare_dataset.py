@@ -3,9 +3,9 @@ import sys
 import shutil
 import glob
 import logging
+import csv
 import numpy as np
 import rasterio
-import csv
 from rasterio.enums import Resampling
 from omegaconf import OmegaConf
 
@@ -14,15 +14,41 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
+from data_pipeline.pipeline_state import PipelineState
+
 logger = logging.getLogger(__name__)
 
-def process_product(product_dir, output_dir, manifest_writer, splits_map):
+def process_product(product_dir, output_dir, manifest_writer, splits_map, force=False, state=None):
     """
     Processes a single product directory: downscales bands using rasterio box-averaging,
     slices into aligned patches using a sliding window with 50% overlap,
     rejects patches with > 10% nodata, and logs comprehensive metadata to the manifest.
+    Uses PipelineState to skip regeneration if input data and pipeline state are unchanged.
     """
     product_name = os.path.basename(product_dir.rstrip('/\\'))
+    
+    if state is None:
+        state = PipelineState()
+
+    # Skip check if not force and dataset state is valid
+    if not force and state.is_product_dataset_valid(product_dir, output_dir):
+        logger.info(f"Skipping product '{product_name}': Prepared dataset patches already exist and are up to date.")
+        # Re-populate manifest entries if manifest is being rewritten
+        target_dir = os.path.join(output_dir, product_name)
+        patch_dirs = sorted(glob.glob(os.path.join(target_dir, f"{product_name}_patch_*")))
+        for pdir in patch_dirs:
+            p_name = os.path.basename(pdir)
+            manifest_writer.writerow([
+                p_name,
+                product_name,
+                "Landsat-8" if product_name.startswith("LC08") else "Landsat-9",
+                product_name.split("_")[2][:3] if len(product_name.split("_")) >= 3 else "",
+                product_name.split("_")[2][3:] if len(product_name.split("_")) >= 3 else "",
+                product_name.split("_")[3] if len(product_name.split("_")) >= 4 else "",
+                "", "", "", "", "", splits_map.get(product_name, "unknown"), "0.000000", "", ""
+            ])
+        return
+
     logger.info(f"Processing product: {product_name}")
     
     # Find band files (robust naming search)
@@ -115,18 +141,19 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
             if nodata_fraction > 0.10:
                 continue
                 
-            sample_dir = os.path.join(target_dir, f"sample_{count:03d}")
+            patch_name = f"{prefix}_patch_{count:03d}"
+            sample_dir = os.path.join(target_dir, patch_name)
             os.makedirs(sample_dir, exist_ok=True)
             
-            np.save(os.path.join(sample_dir, "rgb_100m_512.npy"), rgb_patch)
-            np.save(os.path.join(sample_dir, "tir_100m_512.npy"), tir_100_patch)
-            np.save(os.path.join(sample_dir, "tir_200m.npy"), tir_200_patch)
+            np.save(os.path.join(sample_dir, f"{patch_name}_rgb_100m.npy"), rgb_patch)
+            np.save(os.path.join(sample_dir, f"{patch_name}_tir_100m.npy"), tir_100_patch)
+            np.save(os.path.join(sample_dir, f"{patch_name}_tir_200m.npy"), tir_200_patch)
             
             parts = prefix.split("_")
             satellite = "Landsat-8" if parts[0] == "LC08" else "Landsat-9"
-            path = parts[2][:3]
-            row = parts[2][3:]
-            acquisition_date = parts[3]
+            path = parts[2][:3] if len(parts) >= 3 else ""
+            row = parts[2][3:] if len(parts) >= 3 else ""
+            acquisition_date = parts[3] if len(parts) >= 4 else ""
             
             scale_ratio = 10.0 / 3.0
             source_coords = f"x={x_start_100*scale_ratio:.1f},y={y_start_100*scale_ratio:.1f},w={512*scale_ratio:.1f},h={512*scale_ratio:.1f}"
@@ -134,7 +161,7 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
             coords_200m = f"x={x_start_200},y={y_start_200},w=256,h=256"
             
             manifest_writer.writerow([
-                f"{prefix}_sample_{count:03d}",
+                patch_name,
                 prefix,
                 satellite,
                 path,
@@ -152,6 +179,7 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
             ])
             count += 1
             
+    state.record_product_dataset(product_dir, count)
     logger.info(f"Generated {count} valid patches for {prefix} (nodata filtered)")
 
 def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
@@ -163,6 +191,7 @@ def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=F
         
     os.makedirs(output_dir, exist_ok=True)
     manifest_path = os.path.join(output_dir, "manifest.csv")
+    state = PipelineState()
     
     cfg_path = os.path.join(root_dir, "configs", "data.yaml")
     splits_map = {}
@@ -183,7 +212,7 @@ def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=F
         ])
         
         for product_dir in product_dirs:
-            process_product(product_dir, output_dir, writer, splits_map)
+            process_product(product_dir, output_dir, writer, splits_map, force=force, state=state)
 
     logger.info(f"Dataset preparation completed. Manifest saved to {manifest_path}")
 
