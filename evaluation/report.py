@@ -134,14 +134,11 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
             
             # Extract dominant mean and scale per pixel
             H, W = k_star.shape
-            dom_mean = np.zeros((3, H, W))
-            dom_scale = np.zeros((3, H, W))
             
-            for h in range(H):
-                for w in range(W):
-                    k = k_star[h, w]
-                    dom_mean[:, h, w] = means_np[k, :, h, w]
-                    dom_scale[:, h, w] = scales_np[k, :, h, w]
+            # Vectorized dominant component selection
+            k_star_expanded = np.expand_dims(k_star, axis=(0, 1)).repeat(3, axis=1)
+            dom_mean = np.take_along_axis(means_np, k_star_expanded, axis=0).squeeze(0)
+            dom_scale = np.take_along_axis(scales_np, k_star_expanded, axis=0).squeeze(0)
 
             rgb_preds.append(dom_mean)
             rgb_targets.append(hr_rgb)
