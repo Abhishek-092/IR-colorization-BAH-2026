@@ -43,7 +43,7 @@ class PatchDataset(Dataset):
         for fname in os.listdir(sample_path):
             if fname.lower().endswith(".png"):
                 # Specifically protect against loader being fed pngs
-                pass
+                raise ValueError(f"PNG images are strictly prohibited in the dataset split: {fname}")
 
         # Load raw numpy arrays
         tir_200m_path = os.path.join(sample_path, "tir_200m.npy")
