@@ -81,6 +81,8 @@ def main():
                         help="Path to input directory or Landsat-9 product directory")
     parser.add_argument("--force", action="store_true",
                         help="Force execution (e.g. force training even if checkpoints exist)")
+    parser.add_argument("--split", default="val", choices=["val", "test"],
+                        help="The dataset split to evaluate (val or test)")
     args = parser.parse_args()
 
     # Load configuration
