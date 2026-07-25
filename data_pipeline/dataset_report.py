@@ -99,9 +99,9 @@ def generate_dataset_report(patches_dir, product_ids=None):
         "rgb": {
             "mean": np.mean(all_rgb, axis=1).tolist(),
             "std": np.std(all_rgb, axis=1).tolist(),
-            "quantiles_r": np.percentile(all_rgb[2], [10, 25, 50, 75, 90]).tolist(), # Red channel
+            "quantiles_r": np.percentile(all_rgb[0], [10, 25, 50, 75, 90]).tolist(), # Red channel
             "quantiles_g": np.percentile(all_rgb[1], [10, 25, 50, 75, 90]).tolist(), # Green channel
-            "quantiles_b": np.percentile(all_rgb[0], [10, 25, 50, 75, 90]).tolist(), # Blue channel
+            "quantiles_b": np.percentile(all_rgb[2], [10, 25, 50, 75, 90]).tolist(), # Blue channel
         }
     }
 
