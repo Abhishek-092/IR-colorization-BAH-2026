@@ -30,11 +30,11 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
     if state is None:
         state = PipelineState()
 
+    target_dir = os.path.join(output_dir, product_name)
+
     # Skip check if not force and dataset state is valid
     if not force and state.is_product_dataset_valid(product_dir, output_dir):
         logger.info(f"Skipping product '{product_name}': Prepared dataset patches already exist and are up to date.")
-        # Re-populate manifest entries if manifest is being rewritten
-        target_dir = os.path.join(output_dir, product_name)
         patch_dirs = sorted(glob.glob(os.path.join(target_dir, f"{product_name}_patch_*")))
         for pdir in patch_dirs:
             p_name = os.path.basename(pdir)
@@ -96,7 +96,6 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
     rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0)
     prefix = product_name
     
-    target_dir = os.path.join(output_dir, prefix)
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir)
     os.makedirs(target_dir, exist_ok=True)
