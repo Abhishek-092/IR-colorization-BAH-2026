@@ -148,9 +148,9 @@ def main():
             trainer.train_stage2_color()
         
     elif args.command == "evaluate":
-        logger.info("Evaluation stage is running...")
+        logger.info(f"Evaluation stage is running on split: {args.split}...")
         from evaluation.report import run_evaluation_report
-        run_evaluation_report(args.config, args.weights)
+        run_evaluation_report(args.config, args.weights, split=args.split)
         
     elif args.command == "benchmark":
         logger.info("Benchmarking execution latency and parameter counts...")
