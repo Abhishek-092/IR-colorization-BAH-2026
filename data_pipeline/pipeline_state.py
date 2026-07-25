@@ -3,7 +3,6 @@ import json
 import glob
 import hashlib
 import logging
-from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +117,7 @@ class PipelineState:
             return False
 
         # Lightweight structure check
-        for pdir in patch_dirs[:3]: # Check first few patches
+        for pdir in patch_dirs[:3]:
             p_name = os.path.basename(pdir)
             f1 = os.path.join(pdir, f"{p_name}_rgb_100m.npy")
             f2 = os.path.join(pdir, f"{p_name}_tir_100m.npy")
@@ -184,7 +183,6 @@ class PipelineState:
         if st.get("dataset_state_hash") != self.get_dataset_hash():
             return False
         
-        # Verify stage 2 matches current valid stage 1 state
         st1_hash = hashlib.sha256(json.dumps(self.data.get("stage1", {})).encode()).hexdigest()[:16]
         if st.get("stage1_state_hash") != st1_hash:
             return False
