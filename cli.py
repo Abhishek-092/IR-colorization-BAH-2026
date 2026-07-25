@@ -44,6 +44,31 @@ def are_patches_newer_than(checkpoint_paths, patches_dir="output/patches"):
             
     return False
 
+def get_updated_product_ids(checkpoint_paths, patches_dir="output/patches"):
+    """
+    Identifies which product folders have .npy files newer than the oldest checkpoint.
+    """
+    if not os.path.exists(patches_dir):
+        return []
+        
+    existing_ckpts = [ckpt for ckpt in checkpoint_paths if os.path.exists(ckpt)]
+    if not existing_ckpts:
+        return [os.path.basename(d) for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
+        
+    min_ckpt_mtime = min(os.path.getmtime(ckpt) for ckpt in existing_ckpts)
+    product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
+    updated_pids = []
+    
+    for p_dir in product_dirs:
+        npy_files = glob.glob(os.path.join(p_dir, "**", "*.npy"), recursive=True)
+        if not npy_files:
+            continue
+        max_npy_mtime = max(os.path.getmtime(f) for f in npy_files)
+        if max_npy_mtime > min_ckpt_mtime:
+            updated_pids.append(os.path.basename(p_dir))
+            
+    return updated_pids
+
 def main():
     parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
     parser.add_argument("command", choices=["train-stage1", "train-stage2", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
