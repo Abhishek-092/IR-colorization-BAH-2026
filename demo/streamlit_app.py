@@ -245,11 +245,46 @@ if tir_200 is not None:
     entropy = decode_outs["entropy"].squeeze().numpy()
 
     # Dynamic metrics display at the top
+    import json
+    psnr_val = None
+    ssim_val = None
+    
+    # Try to load dynamic metrics from generated JSON
+    metrics_paths = [
+        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics_val.json"),
+        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics.json"),
+        os.path.join(root_dir, "experiments", "varna_baseline", "metrics_val.json"),
+        os.path.join(root_dir, "experiments", "varna_baseline", "metrics.json")
+    ]
+    # Check if there are other metric files
+    for pattern in ["metrics_val.json", "metrics.json"]:
+        found = glob.glob(os.path.join(root_dir, "experiments", "*", pattern))
+        metrics_paths.extend(found)
+        
+    for m_path in metrics_paths:
+        if os.path.exists(m_path):
+            try:
+                with open(m_path, "r") as f:
+                    data = json.load(f)
+                    if "Overall" in data:
+                        psnr_val = data["Overall"].get("psnr")
+                        ssim_val = data["Overall"].get("ssim")
+                        break
+                    elif "psnr" in data:
+                        psnr_val = data.get("psnr")
+                        ssim_val = data.get("ssim")
+                        break
+            except Exception:
+                pass
+                
+    psnr_str = f"{psnr_val:.2f} dB" if psnr_val is not None else "Not Evaluated"
+    ssim_str = f"{ssim_val:.4f}" if ssim_val is not None else "Not Evaluated"
+
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        st.markdown('<div class="metric-card"><div class="metric-title">Validation PSNR</div><div class="metric-value">26.90 dB</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">Validation PSNR</div><div class="metric-value">{psnr_str}</div></div>', unsafe_allow_html=True)
     with col_b:
-        st.markdown('<div class="metric-card"><div class="metric-title">Validation SSIM</div><div class="metric-value">0.765</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">Validation SSIM</div><div class="metric-value">{ssim_str}</div></div>', unsafe_allow_html=True)
     with col_c:
         st.markdown('<div class="metric-card"><div class="metric-title">TIR Temp. Range</div><div class="metric-value">280K - 315K</div></div>', unsafe_allow_html=True)
     with col_d:
