@@ -109,7 +109,7 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
             x_start_200 = x_start_100 // 2
             tir_200_patch = tir_200m[y_start_200:y_start_200 + patch_size_200, x_start_200:x_start_200 + patch_size_200]
             
-            nodata_mask = (tir_100_patch == 0) | (rgb_patch[0] == 0) | (rgb_patch[1] == 0) | (rgb_patch[2] == 0)
+            nodata_mask = (tir_100_patch == 0) | (rgb_patch[0] == 0) | (rgb_patch[1] == 0) | (rgb_patch[2] == 0) | (tir_100_patch < -100) | (rgb_patch[0] < -100) | (rgb_patch[1] < -100) | (rgb_patch[2] < -100)
             nodata_fraction = float(np.sum(nodata_mask) / tir_100_patch.size)
             
             if nodata_fraction > 0.10:
