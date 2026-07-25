@@ -127,3 +127,51 @@ def test_split_validator_helper():
     }
     with pytest.raises(ValueError, match="Product leakage detected"):
         run_all_validation(corrupt_splits, patches_dir, input_dir=cfg.input_dir)
+
+def test_data_integrity_and_normalization():
+    """
+    Verify:
+    1. No PNG/JPG files exist in any patch directories (no image format contamination).
+    2. B10 normalized tensors do not collapse to constant zero.
+    3. B10 normalized tensors have non-zero variance.
+    4. RGB normalized tensors have non-zero variance.
+    5. Normalized values are scaled in expected bounds ([0, 1] for B10, [0, 255] for RGB).
+    6. No NaN/Inf values are present.
+    """
+    import torch
+    cfg = load_data_config()
+    patches_dir = cfg.patches_dir
+    
+    # Assert no image files in output/patches
+    all_pngs = glob.glob(os.path.join(patches_dir, "**", "*.png"), recursive=True)
+    all_jpegs = glob.glob(os.path.join(patches_dir, "**", "*.jpg"), recursive=True)
+    assert len(all_pngs) == 0, f"Found PNG files in patch directory: {all_pngs[:5]}"
+    assert len(all_jpegs) == 0, f"Found JPEG files in patch directory: {all_jpegs[:5]}"
+    
+    # Load train dataset and check normalization and variance
+    train_dataset = PatchDataset(patches_dir=patches_dir, product_ids=cfg.splits.train)
+    assert len(train_dataset) > 0
+    
+    for i in range(min(5, len(train_dataset))):
+        sample = train_dataset[i]
+        tir_200 = sample["tir_200m"]
+        tir_100 = sample["tir_100m_512"]
+        rgb_100 = sample["rgb_100m_512"]
+        
+        # Verify no NaN or Inf
+        assert not torch.isnan(tir_200).any()
+        assert not torch.isnan(tir_100).any()
+        assert not torch.isnan(rgb_100).any()
+        assert not torch.isinf(tir_200).any()
+        assert not torch.isinf(tir_100).any()
+        assert not torch.isinf(rgb_100).any()
+        
+        # Verify B10 does not collapse to zero and variance is non-zero
+        assert tir_200.std().item() > 1e-6, f"tir_200 variance collapsed to 0 in sample {i}!"
+        assert tir_100.std().item() > 1e-6, f"tir_100 variance collapsed to 0 in sample {i}!"
+        assert rgb_100.std().item() > 1e-6, f"rgb_100 variance collapsed to 0 in sample {i}!"
+        
+        # Verify normalized ranges
+        assert tir_200.min().item() >= 0.0 and tir_200.max().item() <= 1.0, f"tir_200 normalized out of [0, 1] bounds: {tir_200.min().item()} to {tir_200.max().item()}"
+        assert tir_100.min().item() >= 0.0 and tir_100.max().item() <= 1.0, f"tir_100 normalized out of [0, 1] bounds: {tir_100.min().item()} to {tir_100.max().item()}"
+        assert rgb_100.min().item() >= 0.0 and rgb_100.max().item() <= 255.0, f"rgb_100 normalized out of [0, 255] bounds: {rgb_100.min().item()} to {rgb_100.max().item()}"
