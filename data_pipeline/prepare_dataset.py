@@ -1,35 +1,41 @@
 import os
 import sys
 import shutil
-
-# Insert root directory into sys.path to allow running python commands without setting PYTHONPATH
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
-
 import glob
 import logging
 import numpy as np
 import rasterio
 import csv
 from rasterio.enums import Resampling
+from omegaconf import OmegaConf
+
+# Insert root directory into sys.path to allow running python commands without setting PYTHONPATH
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 logger = logging.getLogger(__name__)
 
-def process_product(product_dir, output_dir, manifest_writer):
+def process_product(product_dir, output_dir, manifest_writer, splits_map):
     """
     Processes a single product directory: downscales bands using rasterio box-averaging,
     slices into aligned patches using a sliding window with 50% overlap,
-    rejects patches with > 10% nodata, and logs metadata to the manifest.
+    rejects patches with > 10% nodata, and logs comprehensive metadata to the manifest.
     """
     product_name = os.path.basename(product_dir.rstrip('/\\'))
     logger.info(f"Processing product: {product_name}")
     
-    # Find band files
-    b2_files = glob.glob(os.path.join(product_dir, "*_B2.TIF")) + glob.glob(os.path.join(product_dir, "*_B2.tif"))
-    b3_files = glob.glob(os.path.join(product_dir, "*_B3.TIF")) + glob.glob(os.path.join(product_dir, "*_B3.tif"))
-    b4_files = glob.glob(os.path.join(product_dir, "*_B4.TIF")) + glob.glob(os.path.join(product_dir, "*_B4.tif"))
-    b10_files = glob.glob(os.path.join(product_dir, "*_B10.TIF")) + glob.glob(os.path.join(product_dir, "*_B10.tif"))
+    # Find band files (robust naming search)
+    b2_files = glob.glob(os.path.join(product_dir, "*_B2.TIF")) + glob.glob(os.path.join(product_dir, "*_B2.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B2.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B2.tif"))
+    b3_files = glob.glob(os.path.join(product_dir, "*_B3.TIF")) + glob.glob(os.path.join(product_dir, "*_B3.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B3.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B3.tif"))
+    b4_files = glob.glob(os.path.join(product_dir, "*_B4.TIF")) + glob.glob(os.path.join(product_dir, "*_B4.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B4.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B4.tif"))
+    b10_files = glob.glob(os.path.join(product_dir, "*_B10.TIF")) + glob.glob(os.path.join(product_dir, "*_B10.tif")) + glob.glob(os.path.join(product_dir, "*_ST_B10.TIF")) + glob.glob(os.path.join(product_dir, "*_ST_B10.tif"))
+    
+    # Remove duplicates
+    b2_files = list(set(b2_files))
+    b3_files = list(set(b3_files))
+    b4_files = list(set(b4_files))
+    b10_files = list(set(b10_files))
     
     if not (b2_files and b3_files and b4_files and b10_files):
         logger.error(f"Missing required bands in product directory {product_dir}")
@@ -50,7 +56,7 @@ def process_product(product_dir, output_dir, manifest_writer):
     target_H_200 = target_H_100 // 2
     target_W_200 = target_W_100 // 2
     
-    # Read and resample bands (preserving radiometric precision as float32)
+    # Read and resample bands
     with rasterio.open(b4_files[0]) as src:
         r_100m = src.read(1, out_shape=(target_H_100, target_W_100), resampling=Resampling.average).astype(np.float32)
     with rasterio.open(b3_files[0]) as src:
@@ -61,10 +67,9 @@ def process_product(product_dir, output_dir, manifest_writer):
         tir_100m = src.read(1, out_shape=(target_H_100, target_W_100), resampling=Resampling.average).astype(np.float32)
         tir_200m = src.read(1, out_shape=(target_H_200, target_W_200), resampling=Resampling.average).astype(np.float32)
         
-    rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0) # (3, H, W)
+    rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0)
     prefix = product_name
     
-    # Clear out any stale patches to prevent split contamination
     target_dir = os.path.join(output_dir, prefix)
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir)
@@ -72,11 +77,8 @@ def process_product(product_dir, output_dir, manifest_writer):
     
     patch_size_100 = 512
     patch_size_200 = 256
-    
-    # Slide with 50% overlap
     stride_100 = 256
     
-    # Generate y_starts
     y_starts = []
     y = 0
     while y + patch_size_100 <= target_H_100:
@@ -87,7 +89,6 @@ def process_product(product_dir, output_dir, manifest_writer):
     elif not y_starts:
         y_starts.append(0)
         
-    # Generate x_starts
     x_starts = []
     x = 0
     while x + patch_size_100 <= target_W_100:
@@ -101,24 +102,19 @@ def process_product(product_dir, output_dir, manifest_writer):
     count = 0
     for y_start_100 in y_starts:
         for x_start_100 in x_starts:
-            # Crop 100m patches
             rgb_patch = rgb_100m[:, y_start_100:y_start_100 + patch_size_100, x_start_100:x_start_100 + patch_size_100]
             tir_100_patch = tir_100m[y_start_100:y_start_100 + patch_size_100, x_start_100:x_start_100 + patch_size_100]
             
-            # Crop 200m patches
             y_start_200 = y_start_100 // 2
             x_start_200 = x_start_100 // 2
             tir_200_patch = tir_200m[y_start_200:y_start_200 + patch_size_200, x_start_200:x_start_200 + patch_size_200]
             
-            # Nodata check (pixels exactly equal to 0 across TIR and RGB)
             nodata_mask = (tir_100_patch == 0) | (rgb_patch[0] == 0) | (rgb_patch[1] == 0) | (rgb_patch[2] == 0)
             nodata_fraction = float(np.sum(nodata_mask) / tir_100_patch.size)
             
-            # Filter threshold: reject patches with > 10% nodata
             if nodata_fraction > 0.10:
                 continue
                 
-            # Save NPY files
             sample_dir = os.path.join(target_dir, f"sample_{count:03d}")
             os.makedirs(sample_dir, exist_ok=True)
             
@@ -126,11 +122,15 @@ def process_product(product_dir, output_dir, manifest_writer):
             np.save(os.path.join(sample_dir, "tir_100m_512.npy"), tir_100_patch)
             np.save(os.path.join(sample_dir, "tir_200m.npy"), tir_200_patch)
             
-            # Write to manifest
             parts = prefix.split("_")
             satellite = "Landsat-8" if parts[0] == "LC08" else "Landsat-9"
             path = parts[2][:3]
             row = parts[2][3:]
+            acquisition_date = parts[3]
+            
+            source_coords = f"x={x_start_100*3.33:.1f},y={y_start_100*3.33:.1f},w={512*3.33:.1f},h={512*3.33:.1f}"
+            coords_100m = f"x={x_start_100},y={y_start_100},w=512,h=512"
+            coords_200m = f"x={x_start_200},y={y_start_200},w=256,h=256"
             
             manifest_writer.writerow([
                 f"{prefix}_sample_{count:03d}",
@@ -138,43 +138,22 @@ def process_product(product_dir, output_dir, manifest_writer):
                 satellite,
                 path,
                 row,
-                x_start_100,
-                y_start_100,
-                f"{H}x{W}",
-                f"{nodata_fraction:.6f}"
+                acquisition_date,
+                os.path.basename(b2_files[0]),
+                os.path.basename(b3_files[0]),
+                os.path.basename(b4_files[0]),
+                os.path.basename(b10_files[0]),
+                source_coords,
+                splits_map.get(prefix, "unknown"),
+                f"{nodata_fraction:.6f}",
+                coords_100m,
+                coords_200m
             ])
             count += 1
             
     logger.info(f"Generated {count} valid patches for {prefix} (nodata filtered)")
 
-def is_product_dirty(product_dir, output_dir):
-    """
-    Checks if the patches for a product are missing or if the raw TIF files are newer.
-    """
-    product_name = os.path.basename(product_dir.rstrip('/\\'))
-    target_dir = os.path.join(output_dir, product_name)
-    
-    if not os.path.exists(target_dir):
-        return True
-        
-    npy_files = glob.glob(os.path.join(target_dir, "**", "*.npy"), recursive=True)
-    if not npy_files:
-        return True
-        
-    min_npy_mtime = min(os.path.getmtime(f) for f in npy_files)
-    
-    tif_files = glob.glob(os.path.join(product_dir, "*.TIF")) + glob.glob(os.path.join(product_dir, "*.tif"))
-    if not tif_files:
-        return False
-        
-    max_tif_mtime = max(os.path.getmtime(f) for f in tif_files)
-    return max_tif_mtime > min_npy_mtime
-
 def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
-    """
-    Finds and processes all products in the input folder. Auto-detects updates or new directories.
-    Generates a unified manifest.csv at the end.
-    """
     product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
     if not product_dirs:
@@ -184,15 +163,26 @@ def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=F
     os.makedirs(output_dir, exist_ok=True)
     manifest_path = os.path.join(output_dir, "manifest.csv")
     
-    # We will rewrite the manifest
+    cfg_path = os.path.join(root_dir, "configs", "data.yaml")
+    splits_map = {}
+    if os.path.exists(cfg_path):
+        cfg = OmegaConf.load(cfg_path)
+        for sname in ["train", "val", "test"]:
+            if hasattr(cfg, 'splits') and sname in cfg.splits:
+                for pid in cfg.splits[sname]:
+                    splits_map[pid] = sname
+                    
     with open(manifest_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["patch_id", "product_id", "satellite", "path", "row", "x_offset", "y_offset", "source_shape", "nodata_fraction"])
+        writer.writerow([
+            "patch_id", "product_id", "satellite", "path", "row", "acquisition_date",
+            "source_B2", "source_B3", "source_B4", "source_B10",
+            "source_pixel_window_coordinates", "split", "nodata_fraction",
+            "coordinates_100m", "coordinates_200m"
+        ])
         
         for product_dir in product_dirs:
-            product_name = os.path.basename(product_dir.rstrip('/\\'))
-            # Force regeneration is handled by force=True
-            process_product(product_dir, output_dir, writer)
+            process_product(product_dir, output_dir, writer, splits_map)
 
     logger.info(f"Dataset preparation completed. Manifest saved to {manifest_path}")
 
