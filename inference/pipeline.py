@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+from utils.normalization import normalize_tir
 from sutram.calibration.planck import dn_to_brightness_temp
 
 class DecodeSubmoduleFP32(nn.Module):
@@ -84,18 +85,8 @@ class SUTRAMInferencePipeline(nn.Module):
         self.decode = DecodeSubmoduleFP32(K=K)
 
     def forward(self, lr_tir):
-        # Adaptive self-scaling based on peak value range
-        img_max = lr_tir.max().item()
-        if img_max <= 1.0:
-            lr_tir_norm = torch.clamp(lr_tir, 0.0, 1.0)
-            scale_mode = "normalized"
-        elif img_max <= 255.0:
-            lr_tir_norm = torch.clamp(lr_tir / 255.0, 0.0, 1.0)
-            scale_mode = "8bit"
-        else:
-            TIR_MIN, TIR_MAX = 20000.0, 35000.0
-            lr_tir_norm = torch.clamp((lr_tir - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
-            scale_mode = "16bit"
+        # Adaptive self-scaling based on peak value range using centralized helper
+        lr_tir_norm = normalize_tir(lr_tir)
 
         features = self.backbone(lr_tir_norm)
         
