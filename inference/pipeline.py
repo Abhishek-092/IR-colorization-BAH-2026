@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from utils.normalization import normalize_tir
+from utils.normalization import normalize_tir, denormalize_tir
 from sutram.calibration.planck import dn_to_brightness_temp
 
 class DecodeSubmoduleFP32(nn.Module):
@@ -108,14 +108,8 @@ class SUTRAMInferencePipeline(nn.Module):
         # 4. FP32 Decoding
         decode_outputs = self.decode(logit_weights, means, log_scales)
         
-        # Denormalize outputs back to input ranges
-        if scale_mode == "normalized":
-            sr_tir_dn = torch.clamp(sr_tir, 0.0, 1.0)
-        elif scale_mode == "8bit":
-            sr_tir_dn = torch.clamp(sr_tir * 255.0, 0.0, 255.0)
-        else:
-            TIR_MIN, TIR_MAX = 20000.0, 35000.0
-            sr_tir_dn = torch.clamp(sr_tir * (TIR_MAX - TIR_MIN) + TIR_MIN, TIR_MIN, TIR_MAX)
+        # Denormalize outputs back to input ranges using centralized helper
+        sr_tir_dn = denormalize_tir(sr_tir, scale_mode)
 
         # Denormalize dominant and secondary colors to original 0-10000 scale
         RGB_SCALE = 10000.0
