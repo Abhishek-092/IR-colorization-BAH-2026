@@ -170,6 +170,11 @@ class UnifiedTrainer:
             self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
             logger.info("Loaded Stage 1 backbone weights successfully.")
 
+        mix_path = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth")
+        if os.path.exists(mix_path):
+            self.mixture_head.load_state_dict(torch.load(mix_path, map_location=self.device))
+            logger.info("Loaded existing Stage 2 mixture head weights successfully.")
+
         # Unfreeze Backbone to allow features to adapt to color targets; keep SR Head frozen
         for p in self.backbone.parameters():
             p.requires_grad = True
