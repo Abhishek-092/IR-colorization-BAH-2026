@@ -140,8 +140,12 @@ class UnifiedTrainer:
             # Checkpoint save
             if val_psnr > best_psnr:
                 best_psnr = val_psnr
-                torch.save(self.backbone.state_dict(), os.path.join(self.checkpoint_dir, "backbone_stage1.pth"))
-                torch.save(self.sr_head.state_dict(), os.path.join(self.checkpoint_dir, "sr_head_stage1.pth"))
+                bb_temp = os.path.join(self.checkpoint_dir, "backbone_stage1.pth.tmp")
+                sr_temp = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth.tmp")
+                torch.save(self.backbone.state_dict(), bb_temp)
+                torch.save(self.sr_head.state_dict(), sr_temp)
+                os.replace(bb_temp, os.path.join(self.checkpoint_dir, "backbone_stage1.pth"))
+                os.replace(sr_temp, os.path.join(self.checkpoint_dir, "sr_head_stage1.pth"))
                 logger.info(f"New best validation PSNR locked: {best_psnr:.2f} dB")
 
     def _validate_sr(self, l1_criterion):
@@ -177,9 +181,11 @@ class UnifiedTrainer:
             logger.info("Loaded Stage 1 backbone weights successfully.")
 
         mix_path = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth")
+        loaded_mix = False
         if os.path.exists(mix_path):
             self.mixture_head.load_state_dict(torch.load(mix_path, map_location=self.device))
             logger.info("Loaded existing Stage 2 mixture head weights successfully.")
+            loaded_mix = True
 
         # Unfreeze Backbone to allow features to adapt to color targets; keep SR Head frozen
         for p in self.backbone.parameters():
@@ -188,7 +194,8 @@ class UnifiedTrainer:
             p.requires_grad = False
 
         # Quantile-based component-mean initialization
-        self._init_mixture_means_with_quantiles()
+        if not loaded_mix:
+            self._init_mixture_means_with_quantiles()
 
         optimizer = optim.AdamW(
             list(self.mixture_head.parameters()) + list(self.backbone.parameters()),
@@ -225,7 +232,7 @@ class UnifiedTrainer:
 
                 optimizer.zero_grad()
                 features = self.backbone(lr_tir)
-                pred_sr = self.sr_head(features, lr_tir)
+                pred_sr = self.sr_head(features, lr_tir).detach()
 
                 # Predict mixture parameters
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
@@ -243,16 +250,18 @@ class UnifiedTrainer:
             train_loss /= len(self.train_loader)
 
             # Validation Loss
-            val_loss = self._validate_color(nll_criterion)
+            val_loss = self._validate_color(nll_criterion, tau)
             logger.info(f"Epoch {epoch}/{epochs} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f} (temp={tau:.2f})")
 
             # Checkpoint save
             if val_loss < best_loss:
                 best_loss = val_loss
-                torch.save(self.mixture_head.state_dict(), os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
+                mix_temp = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth.tmp")
+                torch.save(self.mixture_head.state_dict(), mix_temp)
+                os.replace(mix_temp, os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
                 logger.info(f"New best validation color loss locked: {best_loss:.4f}")
 
-    def _validate_color(self, criterion):
+    def _validate_color(self, criterion, tau=1.0):
         # Validation must not update BatchNorm statistics or any other model
         # state.  Otherwise held-out data contaminates the selected checkpoint.
         self.backbone.eval()
@@ -269,6 +278,8 @@ class UnifiedTrainer:
                 features = self.backbone(lr_tir)
                 pred_sr = self.sr_head(features, lr_tir)
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
+                
+                logit_weights = logit_weights / tau
 
                 loss = criterion(logit_weights, means, log_scales, target_rgb)
                 total_loss += loss.item()
