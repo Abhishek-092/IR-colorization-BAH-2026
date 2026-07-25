@@ -16,16 +16,16 @@ class PatchDataset(Dataset):
         self.augment = augment
         self.samples = []
 
-        # Find product directories matching prefix or exact ID
+        # Find product directories matching exact configured ID
         if product_ids is None:
             product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
         else:
             product_dirs = []
-            for d in glob.glob(os.path.join(patches_dir, "*")):
-                if os.path.isdir(d):
-                    basename = os.path.basename(d)
-                    if any(basename.startswith(pid) for pid in product_ids):
-                        product_dirs.append(d)
+            for pid in product_ids:
+                pdir = os.path.join(patches_dir, pid)
+                if not os.path.exists(pdir) or not os.path.isdir(pdir):
+                    raise FileNotFoundError(f"CRITICAL: Configured scene directory '{pid}' could not be found under {patches_dir}")
+                product_dirs.append(pdir)
 
         for pdir in product_dirs:
             p_samples = sorted(glob.glob(os.path.join(pdir, "sample_*")))
