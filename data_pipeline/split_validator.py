@@ -125,7 +125,7 @@ def validate_patch_provenance(patches_dir, train, val, test):
             scene_path = os.path.join(patches_dir, scene)
             if not os.path.exists(scene_path):
                 continue
-            patches = glob.glob(os.path.join(scene_path, "sample_*"))
+            patches = glob.glob(os.path.join(scene_path, "*_patch_*"))
             for p in patches:
                 # Trace parent directory to verify it matches this scene ID
                 parent_dir = os.path.basename(os.path.dirname(p))
@@ -160,7 +160,6 @@ def validate_source_scientific_integrity(input_dir, train, val, test):
             glob.glob(os.path.join(scene_dir, "*_ST_B10.TIF")) +
             glob.glob(os.path.join(scene_dir, "*_ST_B10.tif"))
         )
-        # remove duplicates
         b10_files = list(set(b10_files))
         
         if b10_files:
