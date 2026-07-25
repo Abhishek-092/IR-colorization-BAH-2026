@@ -8,6 +8,7 @@ if root_dir not in sys.path:
 
 import argparse
 import logging
+import glob
 import numpy as np
 import torch
 from omegaconf import OmegaConf
@@ -21,6 +22,27 @@ from training.utils.config_schema import validate_sutram_config
 from training.utils.logger import setup_sutram_logger
 
 logger = logging.getLogger("sutram.cli")
+
+def are_patches_newer_than(checkpoint_paths, patches_dir="output/patches"):
+    """
+    Checks if any patch .npy file is newer than the oldest checkpoint file.
+    """
+    if not os.path.exists(patches_dir):
+        return False
+        
+    npy_files = glob.glob(os.path.join(patches_dir, "**", "*.npy"), recursive=True)
+    if not npy_files:
+        return False
+        
+    max_npy_mtime = max(os.path.getmtime(f) for f in npy_files)
+    
+    for ckpt in checkpoint_paths:
+        if not os.path.exists(ckpt):
+            return True
+        if max_npy_mtime > os.path.getmtime(ckpt):
+            return True
+            
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
