@@ -20,9 +20,9 @@ from training.mixture_head import MixtureHead
 from inference.pipeline import SUTRAMInferencePipeline
 from training.utils.config_schema import validate_sutram_config
 from training.utils.logger import setup_sutram_logger
+from data_pipeline.pipeline_state import PipelineState
 
 logger = logging.getLogger("sutram.cli")
-
 
 def validate_release_checkpoint(checkpoint, checkpoint_path):
     """Refuse stale or ambiguous artifacts at SUTRAM inference time."""
@@ -40,49 +40,6 @@ def validate_release_checkpoint(checkpoint, checkpoint_path):
             f"Release checkpoint lacks calibrated-B10 metadata: {checkpoint_path}. "
             "Create a fresh SUTRAM release after retraining."
         )
-
-def are_patches_newer_than(checkpoint_paths, patches_dir="output/patches"):
-    """
-    Checks if any patch .npy file is newer than the oldest checkpoint file.
-    """
-    if not os.path.exists(patches_dir):
-        return False
-        
-    manifest_path = os.path.join(patches_dir, "manifest.csv")
-    if not os.path.exists(manifest_path):
-        return False
-        
-    manifest_mtime = os.path.getmtime(manifest_path)
-    
-    for ckpt in checkpoint_paths:
-        if not os.path.exists(ckpt):
-            return True
-        if manifest_mtime > os.path.getmtime(ckpt):
-            return True
-            
-    return False
-
-def get_updated_product_ids(checkpoint_paths, patches_dir="output/patches"):
-    """
-    Identifies which product folders have .npy files newer than the oldest checkpoint.
-    """
-    if not os.path.exists(patches_dir):
-        return []
-        
-    existing_ckpts = [ckpt for ckpt in checkpoint_paths if os.path.exists(ckpt)]
-    if not existing_ckpts:
-        return [os.path.basename(d) for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
-        
-    min_ckpt_mtime = min(os.path.getmtime(ckpt) for ckpt in existing_ckpts)
-    product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
-    updated_pids = []
-    
-    for p_dir in product_dirs:
-        # Check if the product directory's own modification time is newer
-        if os.path.getmtime(p_dir) > min_ckpt_mtime:
-            updated_pids.append(os.path.basename(p_dir))
-            
-    return updated_pids
 
 def main():
     parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
@@ -102,7 +59,6 @@ def main():
 
     # Load configuration
     try:
-        # Explicitly load and merge standard configs to match base config structure
         data_cfg = OmegaConf.load("configs/data.yaml")
         training_cfg = OmegaConf.load("configs/training.yaml")
         eval_cfg = OmegaConf.load("configs/evaluation.yaml")
@@ -111,7 +67,6 @@ def main():
         
         cfg = OmegaConf.merge(base_cfg, OmegaConf.create({"data": data_cfg, "training": training_cfg, "evaluation": eval_cfg, "inference": inf_cfg}))
         
-        # Setup logging
         setup_sutram_logger(cfg.data.output_dir)
         validate_sutram_config(cfg)
         
@@ -121,16 +76,13 @@ def main():
 
     logger.info(f"Executing SUTRAM CLI command: {args.command}")
 
+    state = PipelineState()
+
     if args.command == "train-stage1":
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
-        backbone_ckpt = os.path.join(checkpoint_dir, "backbone_stage1.pth")
-        sr_ckpt = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         
-        checkpoints_exist = os.path.exists(backbone_ckpt) and os.path.exists(sr_ckpt)
-        data_updated = are_patches_newer_than([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
-        
-        if checkpoints_exist and not data_updated and not args.force:
-            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and training data is unchanged. Skipping training. Use --force to retrain.")
+        if not args.force and state.is_stage1_valid(checkpoint_dir):
+            logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and pipeline state is valid. Skipping Stage 1 training. Use --force to retrain.")
         else:
             # Pre-training validation gate: fail fast on P0 integrity errors
             from data_pipeline.split_validator import run_all_validation
@@ -139,26 +91,14 @@ def main():
                 cfg.data.patches_dir,
                 input_dir=cfg.data.input_dir
             )
-            
-            if checkpoints_exist and data_updated:
-                logger.info("Auto-detected training dataset updates. Filtering to newer products...")
-                updated_pids = get_updated_product_ids([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
-                if updated_pids:
-                    logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
-                    cfg.data.splits.train = [p for p in cfg.data.splits.train if p in updated_pids]
-                    cfg.data.splits.val = [p for p in cfg.data.splits.val if p in updated_pids]
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
         
     elif args.command == "train-stage2":
         checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
-        mixture_ckpt = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
         
-        checkpoint_exists = os.path.exists(mixture_ckpt)
-        data_updated = are_patches_newer_than([mixture_ckpt], patches_dir=cfg.data.patches_dir)
-        
-        if checkpoint_exists and not data_updated and not args.force:
-            logger.info("Stage 2 checkpoint (mixture_head) already exists and training data is unchanged. Skipping training. Use --force to retrain.")
+        if not args.force and state.is_stage2_valid(checkpoint_dir):
+            logger.info("Stage 2 checkpoint (mixture_head) already exists and pipeline state is valid. Skipping Stage 2 training. Use --force to retrain.")
         else:
             # Pre-training validation gate: fail fast on P0 integrity errors
             from data_pipeline.split_validator import run_all_validation
@@ -167,14 +107,6 @@ def main():
                 cfg.data.patches_dir,
                 input_dir=cfg.data.input_dir
             )
-            
-            if checkpoint_exists and data_updated:
-                logger.info("Auto-detected training dataset updates. Filtering to newer products...")
-                updated_pids = get_updated_product_ids([mixture_ckpt], patches_dir=cfg.data.patches_dir)
-                if updated_pids:
-                    logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
-                    cfg.data.splits.train = [p for p in cfg.data.splits.train if p in updated_pids]
-                    cfg.data.splits.val = [p for p in cfg.data.splits.val if p in updated_pids]
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
             
@@ -205,7 +137,6 @@ def main():
         sr_head = SRHead()
         mix_head = MixtureHead(K=cfg.training.stage2.K)
         
-        # Parameter counting
         bb_params = sum(p.numel() for p in backbone.parameters())
         sr_params = sum(p.numel() for p in sr_head.parameters())
         mix_params = sum(p.numel() for p in mix_head.parameters())
@@ -216,19 +147,15 @@ def main():
         print(f"Mixture Head parameters: {mix_params:,}")
         print(f"Total Model parameters: {total_params:,}")
         
-        # Latency profiling
-        from inference.pipeline import SUTRAMInferencePipeline
         pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
         pipeline.eval()
         
         dummy_input = torch.randn(1, 1, 256, 256)
         
-        # Warmup
         for _ in range(5):
             with torch.no_grad():
                 _ = pipeline(dummy_input)
                 
-        # Profile loop
         runs = 50
         start_time = time.perf_counter()
         for _ in range(runs):
@@ -244,147 +171,40 @@ def main():
         import tifffile
         from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
 
-        # Instantiate pipeline and load weights
         checkpoint_dir = f"experiments/{cfg.experiment_id}/checkpoints"
         backbone = ResNetBackbone()
         sr_head = SRHead()
         mix_head = MixtureHead(K=cfg.training.stage2.K)
 
-        backbone.load_state_dict(torch.load(f"{checkpoint_dir}/backbone_stage1.pth", map_location="cpu"))
-        sr_head.load_state_dict(torch.load(f"{checkpoint_dir}/sr_head_stage1.pth", map_location="cpu"))
-        mix_head.load_state_dict(torch.load(f"{checkpoint_dir}/mixture_head_stage2.pth", map_location="cpu"))
+        bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
+        mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
+
+        if not (os.path.exists(bb_path) and os.path.exists(sr_path) and os.path.exists(mix_path)):
+            logger.error("Missing required stage checkpoints for export.")
+            sys.exit(1)
+
+        backbone.load_state_dict(torch.load(bb_path, map_location="cpu"))
+        sr_head.load_state_dict(torch.load(sr_path, map_location="cpu"))
+        mix_head.load_state_dict(torch.load(mix_path, map_location="cpu"))
 
         pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
         pipeline.eval()
 
-        # 1. Trace and export ONNX model
-        os.makedirs("checkpoints", exist_ok=True)
-        dummy_input = torch.randn(1, 1, 256, 256)
+        os.makedirs("output/onnx", exist_ok=True)
+        dummy_in = torch.randn(1, 1, 256, 256)
         torch.onnx.export(
-            pipeline,
-            dummy_input,
-            cfg.inference.onnx.export_path,
-            input_names=["lr_tir"],
-            output_names=["sr_tir", "dominant_color"],
-            opset_version=cfg.inference.onnx.opset_version,
-            dynamic_axes={"lr_tir": {0: "batch_size"}, "sr_tir": {0: "batch_size"}, "dominant_color": {0: "batch_size"}}
+            pipeline, dummy_in, "output/onnx/sutram_pipeline.onnx",
+            input_names=["input_tir_200m"],
+            output_names=["sr_tir_100m", "color_rgb_100m"],
+            dynamic_axes={"input_tir_200m": {2: "height", 3: "width"}}
         )
-        logger.info(f"ONNX model successfully exported to {cfg.inference.onnx.export_path}")
+        logger.info("Successfully exported ONNX model to output/onnx/sutram_pipeline.onnx")
 
-        # 2. Run full inference on the product to generate required TIF deliverables
-        prod_id = "LC09_L2SP_146044_20260701_20260701_02_T1"
-        ref_path = f"input/{prod_id}/{prod_id}_B10.TIF"
-        lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
-        
-        if os.path.exists(lr_tir_path) and os.path.exists(ref_path):
-            lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
-            lr_tensor = torch.from_numpy(lr_img)
-            if lr_tensor.ndim == 2:
-                lr_tensor = lr_tensor.unsqueeze(0).unsqueeze(0)
-            elif lr_tensor.ndim == 3:
-                lr_tensor = lr_tensor.unsqueeze(0)
-            
-            img_max = float(lr_img.max())
-            scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
-            with torch.no_grad():
-                sr_tir, decode_outs = pipeline(lr_tensor, scale_mode=scale_mode)
-                
-            sr_np = sr_tir.squeeze().numpy()
-            pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
-            
-            # Save GeoTIFFs
-            out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
-            out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
-            
-            export_sr_geotiff(sr_np, ref_path, out_sr_path)
-            export_colorized_geotiff(pred_rgb, ref_path, out_color_path)
-            logger.info("Inference deliverables successfully generated.")
-        else:
-            logger.warning("Could not find input files for inference run. Skipping GeoTIFF export.")
-        
     elif args.command == "submit":
-        logger.info("Validating deliverables and generating submission package...")
-        from submission.generate_submission import package_submission
-        package_submission()
-        
-    elif args.command == "generate-sample-results":
-        logger.info("Generating publication-quality sample results figures...")
-        from evaluation.sample_results import generate_sample_results
-        generate_sample_results()
-
-    elif args.command == "infer":
-        logger.info("Executing Project SUTRAM Inference Run...")
-        weights_path = args.weights if args.weights is not None else "checkpoints/sutram_final.pth"
-        if not os.path.exists(weights_path):
-            logger.error(f"Weights package not found at {weights_path}")
-            sys.exit(1)
-            
-        logger.info(f"Loading weights from {weights_path}")
-        checkpoint = torch.load(weights_path, map_location="cpu")
-        validate_release_checkpoint(checkpoint, weights_path)
-        
-        backbone = ResNetBackbone()
-        sr_head = SRHead()
-        mixture_head = MixtureHead(K=checkpoint["config"]["K_components"])
-        
-        backbone.load_state_dict(checkpoint["backbone_state_dict"])
-        sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
-        mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
-        
-        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mixture_head, K=checkpoint["config"]["K_components"])
-        pipeline.eval()
-        
-        input_dir = args.input if args.input is not None else "input/LC09_L2SP_146044_20260701_20260701_02_T1"
-        if not os.path.exists(input_dir):
-            logger.error(f"Input directory/file not found: {input_dir}")
-            sys.exit(1)
-            
-        import glob
-        tif_files = glob.glob(os.path.join(input_dir, "*_B10.TIF")) + glob.glob(os.path.join(input_dir, "*_B10.tif")) + glob.glob(os.path.join(input_dir, "*_tir_200m.tif"))
-        if not tif_files:
-            prod_id = os.path.basename(input_dir)
-            lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
-            ref_path = f"input/{prod_id}/{prod_id}_B10.TIF"
-        else:
-            ref_path = tif_files[0]
-            prod_id = os.path.basename(input_dir)
-            lr_tir_path = f"output/downscaled_data/{prod_id}_tir_200m.tif"
-            if not os.path.exists(lr_tir_path):
-                lr_tir_path = ref_path
-                
-        if not os.path.exists(lr_tir_path):
-            logger.error(f"Cannot find low-resolution input TIR at {lr_tir_path}")
-            sys.exit(1)
-            
-        logger.info(f"Running inference on input: {lr_tir_path}")
-        import tifffile
-        import numpy as np
-        from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
-        
-        lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
-        lr_tensor = torch.from_numpy(lr_img)
-        if lr_tensor.ndim == 2:
-            lr_tensor = lr_tensor.unsqueeze(0).unsqueeze(0)
-        elif lr_tensor.ndim == 3:
-            lr_tensor = lr_tensor.unsqueeze(0)
-            
-        img_max = float(lr_img.max())
-        scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
-        with torch.no_grad():
-            sr_tir, decode_outs = pipeline(lr_tensor, scale_mode=scale_mode)
-            
-        sr_np = sr_tir.squeeze().numpy()
-        pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
-        
-        os.makedirs("output/model_outputs/tir_superresolved_100m", exist_ok=True)
-        os.makedirs("output/model_outputs/colorized_tir_100m", exist_ok=True)
-        
-        out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
-        out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
-        
-        export_sr_geotiff(sr_np, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
-        export_colorized_geotiff(pred_rgb, ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
-        logger.info(f"Inference outputs successfully generated:\n  - SR TIR: {out_sr_path}\n  - Colorized: {out_color_path}")
+        logger.info("Packaging submission deliverables...")
+        from scripts.generate_sample_patches_zip import main as gen_zip
+        gen_zip()
 
 if __name__ == "__main__":
     main()
