@@ -287,8 +287,10 @@ def main():
             elif lr_tensor.ndim == 3:
                 lr_tensor = lr_tensor.unsqueeze(0)
             
+            img_max = float(lr_img.max())
+            scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
             with torch.no_grad():
-                sr_tir, decode_outs = pipeline(lr_tensor)
+                sr_tir, decode_outs = pipeline(lr_tensor, scale_mode=scale_mode)
                 
             sr_np = sr_tir.squeeze().numpy()
             pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
@@ -369,8 +371,10 @@ def main():
         elif lr_tensor.ndim == 3:
             lr_tensor = lr_tensor.unsqueeze(0)
             
+        img_max = float(lr_img.max())
+        scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
         with torch.no_grad():
-            sr_tir, decode_outs = pipeline(lr_tensor)
+            sr_tir, decode_outs = pipeline(lr_tensor, scale_mode=scale_mode)
             
         sr_np = sr_tir.squeeze().numpy()
         pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
