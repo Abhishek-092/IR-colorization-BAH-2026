@@ -113,7 +113,7 @@ def load_sutram_pipeline(K):
     mix_head = MixtureHead(K=K)
     
     # Load from the official release checkpoint package first
-    final_path = os.path.join("checkpoints", "sutram_final.pth")
+    final_path = os.path.join(root_dir, "checkpoints", "sutram_final.pth")
     if os.path.exists(final_path):
         checkpoint = torch.load(final_path, map_location="cpu")
         backbone.load_state_dict(checkpoint["backbone_state_dict"])
@@ -121,7 +121,7 @@ def load_sutram_pipeline(K):
         mix_head.load_state_dict(checkpoint["mixture_head_state_dict"])
     else:
         # Fallback to stage-wise experiments weights if release package is missing
-        checkpoint_dir = os.path.join("experiments", "varna_baseline", "checkpoints")
+        checkpoint_dir = os.path.join(root_dir, "experiments", "varna_baseline", "checkpoints")
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
@@ -148,7 +148,7 @@ tir_100_gt = None
 rgb_100_gt = None
 
 if mode == "📂 Patch Explorer (Pre-cropped)":
-    patch_dirs = glob.glob(os.path.join("output", "patches", "*", "sample_*"))
+    patch_dirs = glob.glob(os.path.join(root_dir, "output", "patches", "*", "sample_*"))
     if not patch_dirs:
         st.info("No patch samples found in output/patches. Please run dataset generator first.")
     else:
@@ -165,7 +165,7 @@ else:
     import rasterio
     from rasterio.enums import Resampling
     
-    raw_scene_dirs = [d for d in glob.glob(os.path.join("input", "*")) if os.path.isdir(d)]
+    raw_scene_dirs = [d for d in glob.glob(os.path.join(root_dir, "input", "*")) if os.path.isdir(d)]
     valid_scene_dirs = []
     
     # Filter only folders containing a B10 TIFF file
