@@ -121,7 +121,7 @@ def load_sutram_pipeline(K):
         mix_head.load_state_dict(checkpoint["mixture_head_state_dict"])
     else:
         # Fallback to stage-wise experiments weights if release package is missing
-        checkpoint_dir = os.path.join(root_dir, "experiments", "varna_baseline", "checkpoints")
+        checkpoint_dir = os.path.join(root_dir, "experiments", "sutram_baseline", "checkpoints")
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
@@ -253,8 +253,6 @@ if tir_200 is not None:
     metrics_paths = [
         os.path.join(root_dir, "experiments", "sutram_baseline", "metrics_val.json"),
         os.path.join(root_dir, "experiments", "sutram_baseline", "metrics.json"),
-        os.path.join(root_dir, "experiments", "varna_baseline", "metrics_val.json"),
-        os.path.join(root_dir, "experiments", "varna_baseline", "metrics.json")
     ]
     # Check if there are other metric files
     for pattern in ["metrics_val.json", "metrics.json"]:
