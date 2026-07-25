@@ -37,6 +37,12 @@ class UnifiedTrainer:
         self.checkpoint_dir = os.path.join(self.exp_dir, "checkpoints")
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
+        # Validate splits to prevent leakage and enforce strict criteria
+        from data_pipeline.split_validator import run_all_validation
+        import omegaconf
+        splits_dict = omegaconf.OmegaConf.to_container(cfg.data.splits, resolve=True)
+        run_all_validation(splits_dict, cfg.data.patches_dir, input_dir=cfg.data.input_dir)
+
         # Init models
         self.backbone = ResNetBackbone(in_channels=1).to(self.device)
         self.sr_head = SRHead().to(self.device)
