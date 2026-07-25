@@ -104,8 +104,8 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
         log_probs_right = torch.log(torch.clamp(torch.sigmoid(-minus_in), min=1e-7))
 
         # Select probabilities based on targets
-        log_probs = torch.where(targets < 0.001, log_probs_left, 
-                                torch.where(targets > 254.999, log_probs_right, log_probs_interior))
+        log_probs = torch.where(targets < 1e-4, log_probs_left, 
+                                torch.where(targets > 255.0 - 1e-4, log_probs_right, log_probs_interior))
 
         # Sum probabilities over RGB channels
         log_probs_rgb = log_probs.sum(dim=2) # (B, K, H, W)
