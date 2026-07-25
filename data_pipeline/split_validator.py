@@ -139,6 +139,40 @@ def validate_patch_provenance(patches_dir, train, val, test):
                         
     logger.info("Patch Provenance and Format check: PASSED.")
 
+def validate_source_scientific_integrity(input_dir, train, val, test):
+    """
+    Ensures all source TIFF files are single-channel high-precision uint16 rasters,
+    and raises an error if any of them are multi-channel uint8 rendered visualization images.
+    """
+    import rasterio
+    
+    all_scenes = set(train + val + test)
+    invalid_scenes = []
+    
+    for scene in all_scenes:
+        scene_dir = os.path.join(input_dir, scene)
+        if not os.path.exists(scene_dir):
+            continue
+            
+        b10_files = (
+            glob.glob(os.path.join(scene_dir, "*_B10.TIF")) +
+            glob.glob(os.path.join(scene_dir, "*_B10.tif")) +
+            glob.glob(os.path.join(scene_dir, "*_ST_B10.TIF")) +
+            glob.glob(os.path.join(scene_dir, "*_ST_B10.tif"))
+        )
+        # remove duplicates
+        b10_files = list(set(b10_files))
+        
+        if b10_files:
+            file_path = b10_files[0]
+            with rasterio.open(file_path) as src:
+                if src.count == 4 or src.dtypes[0] == 'uint8':
+                    invalid_scenes.append(scene)
+                    
+    if invalid_scenes:
+        logger.error(f"CRITICAL: The following scenes contain invalid rendered uint8 RGBA source rasters instead of scientific Landsat products: {invalid_scenes}")
+        raise ValueError(f"INVALID_SOURCE_DATA: Rendered/degraded uint8 RGBA files found in: {invalid_scenes}. SUTRAM is in WAITING_FOR_VALID_DATA state. Please re-download scientific uint16 GeoTIFFs.")
+
 def run_all_validation(splits, patches_dir, input_dir="input"):
     """
     Runs the full validation suite against a split configuration.
@@ -148,6 +182,7 @@ def run_all_validation(splits, patches_dir, input_dir="input"):
     validate_product_isolation(train, val, test)
     validate_path_row_isolation(train, val, test)
     validate_sensor_presence(train, val, test)
+    validate_source_scientific_integrity(input_dir, train, val, test)
     validate_scene_inventory(patches_dir, train, val, test)
     validate_required_bands(input_dir, train, val, test)
     validate_patch_provenance(patches_dir, train, val, test)
