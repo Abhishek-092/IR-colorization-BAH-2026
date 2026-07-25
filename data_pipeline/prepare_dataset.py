@@ -45,9 +45,9 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
     with rasterio.open(b2_files[0]) as src:
         H, W = src.shape
 
-    # Calculate downscaled dimensions at 100m (downscale factor ~ 3.33)
-    target_H_100 = (int(round(H / 3.33)) // 2) * 2
-    target_W_100 = (int(round(W / 3.33)) // 2) * 2
+    # Calculate downscaled dimensions at 100m (downscale factor exactly 10/3)
+    target_H_100 = (int(round(H / (10.0 / 3.0))) // 2) * 2
+    target_W_100 = (int(round(W / (10.0 / 3.0))) // 2) * 2
     
     # Enforce minimum patch dimensions
     target_H_100 = max(512, target_H_100)
@@ -128,7 +128,8 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map):
             row = parts[2][3:]
             acquisition_date = parts[3]
             
-            source_coords = f"x={x_start_100*3.33:.1f},y={y_start_100*3.33:.1f},w={512*3.33:.1f},h={512*3.33:.1f}"
+            scale_ratio = 10.0 / 3.0
+            source_coords = f"x={x_start_100*scale_ratio:.1f},y={y_start_100*scale_ratio:.1f},w={512*scale_ratio:.1f},h={512*scale_ratio:.1f}"
             coords_100m = f"x={x_start_100},y={y_start_100},w=512,h=512"
             coords_200m = f"x={x_start_200},y={y_start_200},w=256,h=256"
             
