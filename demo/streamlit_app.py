@@ -274,7 +274,7 @@ if tir_200 is not None:
         with col3:
             # Transpose to (H,W,C) for visualization
             pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
-            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", width="stretch")
+            st.image(percentile_stretch(pred_rgb_viz), caption="Probabilistic Colour Mixture (100m)", width="stretch")
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
             st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", width="stretch")
