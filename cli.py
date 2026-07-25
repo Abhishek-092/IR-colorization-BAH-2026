@@ -130,8 +130,8 @@ def main():
                 updated_pids = get_updated_product_ids([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
                 if updated_pids:
                     logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
-                    cfg.data.splits.train = updated_pids
-                    cfg.data.splits.val = updated_pids
+                    cfg.data.splits.train = [p for p in cfg.data.splits.train if p in updated_pids]
+                    cfg.data.splits.val = [p for p in cfg.data.splits.val if p in updated_pids]
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
         
@@ -158,8 +158,8 @@ def main():
                 updated_pids = get_updated_product_ids([mixture_ckpt], patches_dir=cfg.data.patches_dir)
                 if updated_pids:
                     logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
-                    cfg.data.splits.train = updated_pids
-                    cfg.data.splits.val = updated_pids
+                    cfg.data.splits.train = [p for p in cfg.data.splits.train if p in updated_pids]
+                    cfg.data.splits.val = [p for p in cfg.data.splits.val if p in updated_pids]
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
             
