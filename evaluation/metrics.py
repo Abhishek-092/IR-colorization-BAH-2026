@@ -74,6 +74,7 @@ def compute_regression_ece(pred_means, pred_scales, targets, num_bins=10):
     
     ece = 0.0
     p_levels = np.linspace(0.1, 0.9, num_bins)
+    empirical_coverages = []
     
     for p in p_levels:
         # Logistic distribution percentiles corresponding to confidence level p
@@ -89,10 +90,11 @@ def compute_regression_ece(pred_means, pred_scales, targets, num_bins=10):
         # Count empirical coverage
         inside = (y_true >= lower_bound) & (y_true <= upper_bound)
         empirical_coverage = np.mean(inside)
+        empirical_coverages.append(float(empirical_coverage))
         
         ece += np.abs(empirical_coverage - p)
         
-    return float(ece / num_bins)
+    return float(ece / num_bins), empirical_coverages
 
 def compute_sparsification_auc(pred_errors, pred_uncertainties):
     """
