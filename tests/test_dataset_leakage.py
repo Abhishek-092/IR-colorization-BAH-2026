@@ -116,17 +116,28 @@ def test_split_validator_helper():
     splits_dict = OmegaConf.to_container(cfg.splits, resolve=True)
     patches_dir = cfg.patches_dir
     
-    # Standard check should pass
-    run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
+    # 1. Standard check on current dataset must FAIL fast due to P0 invalid uint8 RGBA files
+    with pytest.raises(ValueError, match="INVALID_SOURCE_DATA"):
+        run_all_validation(splits_dict, patches_dir, input_dir=cfg.input_dir)
+        
+    # 2. Test split leakage logic on clean mock dataset splits containing only the valid scene
+    valid_scene = "LC09_L2SP_146044_20260701_20260701_02_T1"
+    clean_splits = {
+        "train": [valid_scene],
+        "val": [],
+        "test": []
+    }
+    # Should pass without leakage
+    run_all_validation(clean_splits, patches_dir, input_dir=cfg.input_dir)
     
-    # Corrupt check by leaking a scene should raise ValueError
-    corrupt_splits = {
-        "train": list(splits_dict["train"]),
-        "val": list(splits_dict["val"]) + [splits_dict["train"][0]],
-        "test": list(splits_dict["test"])
+    # Leaked splits should raise Product Leakage
+    leaked_splits = {
+        "train": [valid_scene],
+        "val": [valid_scene],
+        "test": []
     }
     with pytest.raises(ValueError, match="Product leakage detected"):
-        run_all_validation(corrupt_splits, patches_dir, input_dir=cfg.input_dir)
+        run_all_validation(leaked_splits, patches_dir, input_dir=cfg.input_dir)
 
 def test_data_integrity_and_normalization():
     """
