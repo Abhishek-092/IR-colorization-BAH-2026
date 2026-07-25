@@ -116,7 +116,12 @@ def main():
             logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
             if checkpoints_exist and data_updated:
-                logger.info("Auto-detected training dataset updates. Retraining Stage 1...")
+                logger.info("Auto-detected training dataset updates. Filtering to newer products...")
+                updated_pids = get_updated_product_ids([backbone_ckpt, sr_ckpt], patches_dir=cfg.data.patches_dir)
+                if updated_pids:
+                    logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
+                    cfg.data.splits.train = updated_pids
+                    cfg.data.splits.val = updated_pids
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
         
@@ -131,7 +136,12 @@ def main():
             logger.info("Stage 2 checkpoint (mixture_head) already exists and training data is unchanged. Skipping training. Use --force to retrain.")
         else:
             if checkpoint_exists and data_updated:
-                logger.info("Auto-detected training dataset updates. Retraining Stage 2...")
+                logger.info("Auto-detected training dataset updates. Filtering to newer products...")
+                updated_pids = get_updated_product_ids([mixture_ckpt], patches_dir=cfg.data.patches_dir)
+                if updated_pids:
+                    logger.info(f"Filtering dataset splits to only updated products: {updated_pids}")
+                    cfg.data.splits.train = updated_pids
+                    cfg.data.splits.val = updated_pids
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
         
