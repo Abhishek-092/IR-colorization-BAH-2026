@@ -29,26 +29,24 @@ class PatchDataset(Dataset):
                 product_dirs.append(pdir)
 
         for pdir in product_dirs:
-            p_samples = sorted(glob.glob(os.path.join(pdir, "sample_*")))
-            self.samples.extend(p_samples)
+            p_samples = sorted(glob.glob(os.path.join(pdir, "*_patch_*")))
+            # Verify PNGs on init once per dataset build (not inside __getitem__)
+            for s_path in p_samples:
+                for fname in os.listdir(s_path):
+                    if fname.lower().endswith(".png"):
+                        raise ValueError(f"PNG images are strictly prohibited in the dataset split: {fname}")
+                self.samples.append(s_path)
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         sample_path = self.samples[idx]
+        patch_name = os.path.basename(sample_path)
 
-        # Enforce the hard rule at runtime: refuse to read PNGs
-        # (Though we list sample folders, we verify files inside aren't .png)
-        for fname in os.listdir(sample_path):
-            if fname.lower().endswith(".png"):
-                # Specifically protect against loader being fed pngs
-                raise ValueError(f"PNG images are strictly prohibited in the dataset split: {fname}")
-
-        # Load raw numpy arrays
-        tir_200m_path = os.path.join(sample_path, "tir_200m.npy")
-        tir_100m_path = os.path.join(sample_path, "tir_100m_512.npy")
-        rgb_100m_path = os.path.join(sample_path, "rgb_100m_512.npy")
+        tir_200m_path = os.path.join(sample_path, f"{patch_name}_tir_200m.npy")
+        tir_100m_path = os.path.join(sample_path, f"{patch_name}_tir_100m.npy")
+        rgb_100m_path = os.path.join(sample_path, f"{patch_name}_rgb_100m.npy")
 
         for p in [tir_200m_path, tir_100m_path, rgb_100m_path]:
             if not p.endswith(".npy"):
