@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def generate_dataset_report(patches_dir):
+def generate_dataset_report(patches_dir, product_ids=None):
     """
     Computes statistical properties over the entire patch dataset.
     Outputs:
@@ -13,7 +13,24 @@ def generate_dataset_report(patches_dir):
     - Empirical quantiles of the RGB distribution (crucial for Mode-Redundancy init)
     - Total sample count and missing value verification
     """
-    sample_dirs = glob.glob(os.path.join(patches_dir, "*", "sample_*"))
+    # Statistics used for training-time initialization must come only from the
+    # training split.  Reading validation/test RGB here would leak target-side
+    # distribution information before model fitting.
+    if product_ids is None:
+        product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
+    else:
+        product_dirs = []
+        for product_id in product_ids:
+            product_dir = os.path.join(patches_dir, product_id)
+            if not os.path.isdir(product_dir):
+                raise FileNotFoundError(
+                    f"Configured training scene '{product_id}' is missing from {patches_dir}"
+                )
+            product_dirs.append(product_dir)
+
+    sample_dirs = []
+    for product_dir in product_dirs:
+        sample_dirs.extend(sorted(glob.glob(os.path.join(product_dir, "sample_*"))))
     if not sample_dirs:
         logger.error(f"No patches found in {patches_dir}")
         return None
