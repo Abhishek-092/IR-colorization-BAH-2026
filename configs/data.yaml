@@ -17,10 +17,17 @@ patch_sizes:
   colorization_tir: 256
   colorization_rgb: 256
 
-# Train/Val Splits (Product IDs list)
+# Explicit Train/Val/Test splits (Product IDs list)
 splits:
   train:
-    - "LC08"
-    - "demo"
+    - "LC08_L2SP_134051_20260614_20260619_02_T2"
+    - "LC08_L2SP_137041_20260705_20260716_02_T1"
+    - "LC09_L2SP_136042_20260706_20260707_02_T1"
+    - "LC09_L2SP_146040_20260626_20260627_02_T1"
+    - "LC09_L2SP_146040_20260712_20260713_02_T1"
   val:
-    - "LC09"
+    - "LC08_L2SP_143051_20260629_20260707_02_T1"
+    - "LC09_L2SP_146044_20260701_20260701_02_T1"
+  test:
+    - "LC08_L2SP_146047_20260618_20260627_02_T1"
+    - "LC09_L2SP_147046_20260617_20260622_02_T1"
