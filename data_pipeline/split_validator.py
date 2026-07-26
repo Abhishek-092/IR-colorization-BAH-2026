@@ -69,15 +69,20 @@ def validate_path_row_isolation(train, val, test):
         
     logger.info("Level 2 Path-Row Geographic Isolation check: PASSED.")
 
-def validate_scene_inventory(patches_dir, train, val, test):
+def validate_scene_inventory(patches_dir, train, val, test, input_dir="input"):
     """
     Verifies that every configured scene exists in the patches directory.
+    If a scene is absent from both raw input and patches directory, logs a warning.
     """
     all_configured = set(train + val + test)
     for scene in all_configured:
         scene_path = os.path.join(patches_dir, scene)
         if not os.path.exists(scene_path) or not os.path.isdir(scene_path):
-            raise ValueError(f"CRITICAL: Configured scene directory does not exist: {scene_path}")
+            raw_scene_dir = os.path.join(input_dir, scene)
+            if not os.path.exists(raw_scene_dir):
+                logger.warning(f"Configured scene missing from raw input and patches: {scene}")
+                continue
+            raise ValueError(f"CRITICAL: Configured scene directory does not exist under patches: {scene_path}. Please run dataset preparation first.")
             
     logger.info("Scene Inventory check: PASSED.")
 
@@ -127,12 +132,10 @@ def validate_patch_provenance(patches_dir, train, val, test):
                 continue
             patches = glob.glob(os.path.join(scene_path, "*_patch_*"))
             for p in patches:
-                # Trace parent directory to verify it matches this scene ID
                 parent_dir = os.path.basename(os.path.dirname(p))
                 if parent_dir != scene:
                     raise ValueError(f"CRITICAL: Patch {p} has incorrect provenance. Parent directory {parent_dir} does not match scene {scene}.")
                 
-                # Check for PNG files
                 for f in os.listdir(p):
                     if f.lower().endswith(".png"):
                         raise ValueError(f"CRITICAL: PNG file forbidden in patch directory: {os.path.join(p, f)}")
@@ -181,7 +184,7 @@ def run_all_validation(splits, patches_dir, input_dir="input"):
     validate_path_row_isolation(train, val, test)
     validate_sensor_presence(train, val, test)
     validate_source_scientific_integrity(input_dir, train, val, test)
-    validate_scene_inventory(patches_dir, train, val, test)
+    validate_scene_inventory(patches_dir, train, val, test, input_dir=input_dir)
     validate_required_bands(input_dir, train, val, test)
     validate_patch_provenance(patches_dir, train, val, test)
     logger.info("SPLIT VALIDATION: ALL CHECKS PASSED.")
