@@ -9,9 +9,11 @@ if root_dir not in sys.path:
 import argparse
 import logging
 import glob
+from typing import cast, Any, Dict
 import numpy as np
 import torch
-from omegaconf import OmegaConf
+import torch.nn as nn
+from omegaconf import OmegaConf, DictConfig
 
 from training.trainer import UnifiedTrainer
 from training.backbone import ResNetBackbone
@@ -24,7 +26,7 @@ from data_pipeline.pipeline_state import PipelineState
 
 logger = logging.getLogger("sutram.cli")
 
-def validate_release_checkpoint(checkpoint, checkpoint_path):
+def validate_release_checkpoint(checkpoint: Any, checkpoint_path: str) -> None:
     """Refuse stale or ambiguous artifacts at SUTRAM inference time."""
     if not isinstance(checkpoint, dict):
         raise ValueError(f"Release checkpoint is not a metadata package: {checkpoint_path}")
@@ -35,13 +37,13 @@ def validate_release_checkpoint(checkpoint, checkpoint_path):
             "Create a fresh SUTRAM release after retraining."
         )
     preprocessing = checkpoint.get("config", {}).get("preprocessing", {})
-    if preprocessing.get("tir_representation") != "brightness_temperature_kelvin":
+    if isinstance(preprocessing, dict) and preprocessing.get("tir_representation") != "brightness_temperature_kelvin":
         raise ValueError(
             f"Release checkpoint lacks calibrated-B10 metadata: {checkpoint_path}. "
             "Create a fresh SUTRAM release after retraining."
         )
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="SUTRAM Unified Workflow Command Line Interface")
     parser.add_argument("command", choices=["train-stage1", "train-stage2", "validate-dataset", "evaluate", "benchmark", "export", "submit", "generate-sample-results", "infer"],
                         help="Workflow command to execute")
@@ -65,9 +67,10 @@ def main():
         inf_cfg = OmegaConf.load("configs/inference.yaml")
         base_cfg = OmegaConf.load(args.config)
         
-        cfg = OmegaConf.merge(base_cfg, OmegaConf.create({"data": data_cfg, "training": training_cfg, "evaluation": eval_cfg, "inference": inf_cfg}))
+        merged_cfg = OmegaConf.merge(base_cfg, OmegaConf.create({"data": data_cfg, "training": training_cfg, "evaluation": eval_cfg, "inference": inf_cfg}))
+        cfg: DictConfig = cast(DictConfig, merged_cfg)
         
-        setup_sutram_logger(cfg.data.output_dir)
+        setup_sutram_logger(str(cfg.data.output_dir))
         validate_sutram_config(cfg)
         
     except Exception as e:
@@ -79,33 +82,35 @@ def main():
     state = PipelineState()
 
     if args.command == "train-stage1":
-        checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
+        checkpoint_dir = os.path.join("experiments", str(cfg.experiment_id), "checkpoints")
         
         if not args.force and state.is_stage1_valid(checkpoint_dir):
             logger.info("Stage 1 checkpoints (backbone & sr_head) already exist and pipeline state is valid. Skipping Stage 1 training. Use --force to retrain.")
         else:
             # Pre-training validation gate: fail fast on P0 integrity errors
             from data_pipeline.split_validator import run_all_validation
+            splits_container = cast(Dict[str, Any], OmegaConf.to_container(cfg.data.splits, resolve=True))
             run_all_validation(
-                OmegaConf.to_container(cfg.data.splits, resolve=True),
-                cfg.data.patches_dir,
-                input_dir=cfg.data.input_dir
+                splits_container,
+                str(cfg.data.patches_dir),
+                input_dir=str(cfg.data.input_dir)
             )
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage1_sr()
         
     elif args.command == "train-stage2":
-        checkpoint_dir = os.path.join("experiments", cfg.experiment_id, "checkpoints")
+        checkpoint_dir = os.path.join("experiments", str(cfg.experiment_id), "checkpoints")
         
         if not args.force and state.is_stage2_valid(checkpoint_dir):
             logger.info("Stage 2 checkpoint (mixture_head) already exists and pipeline state is valid. Skipping Stage 2 training. Use --force to retrain.")
         else:
             # Pre-training validation gate: fail fast on P0 integrity errors
             from data_pipeline.split_validator import run_all_validation
+            splits_container = cast(Dict[str, Any], OmegaConf.to_container(cfg.data.splits, resolve=True))
             run_all_validation(
-                OmegaConf.to_container(cfg.data.splits, resolve=True),
-                cfg.data.patches_dir,
-                input_dir=cfg.data.input_dir
+                splits_container,
+                str(cfg.data.patches_dir),
+                input_dir=str(cfg.data.input_dir)
             )
             trainer = UnifiedTrainer(cfg)
             trainer.train_stage2_color()
@@ -114,10 +119,11 @@ def main():
         logger.info("Executing dataset validation gate...")
         from data_pipeline.split_validator import run_all_validation
         try:
+            splits_container = cast(Dict[str, Any], OmegaConf.to_container(cfg.data.splits, resolve=True))
             run_all_validation(
-                OmegaConf.to_container(cfg.data.splits, resolve=True),
-                cfg.data.patches_dir,
-                input_dir=cfg.data.input_dir
+                splits_container,
+                str(cfg.data.patches_dir),
+                input_dir=str(cfg.data.input_dir)
             )
             logger.info("Dataset validation gate: SUCCESS! All pre-training integrity checks passed.")
         except Exception as e:
@@ -135,7 +141,7 @@ def main():
         
         backbone = ResNetBackbone()
         sr_head = SRHead()
-        mix_head = MixtureHead(K=cfg.training.stage2.K)
+        mix_head = MixtureHead(K=int(cfg.training.stage2.K))
         
         bb_params = sum(p.numel() for p in backbone.parameters())
         sr_params = sum(p.numel() for p in sr_head.parameters())
@@ -147,20 +153,20 @@ def main():
         print(f"Mixture Head parameters: {mix_params:,}")
         print(f"Total Model parameters: {total_params:,}")
         
-        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
-        pipeline.eval()
+        pipeline_bench: nn.Module = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=int(cfg.training.stage2.K))
+        pipeline_bench.eval()
         
         dummy_input = torch.randn(1, 1, 256, 256)
         
         for _ in range(5):
             with torch.no_grad():
-                _ = pipeline(dummy_input)
+                _ = pipeline_bench(dummy_input)
                 
         runs = 50
         start_time = time.perf_counter()
         for _ in range(runs):
             with torch.no_grad():
-                _ = pipeline(dummy_input)
+                _ = pipeline_bench(dummy_input)
         end_time = time.perf_counter()
         
         avg_latency = ((end_time - start_time) / runs) * 1000
@@ -174,7 +180,7 @@ def main():
         checkpoint_dir = f"experiments/{cfg.experiment_id}/checkpoints"
         backbone = ResNetBackbone()
         sr_head = SRHead()
-        mix_head = MixtureHead(K=cfg.training.stage2.K)
+        mix_head = MixtureHead(K=int(cfg.training.stage2.K))
 
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
@@ -188,13 +194,13 @@ def main():
         sr_head.load_state_dict(torch.load(sr_path, map_location="cpu"))
         mix_head.load_state_dict(torch.load(mix_path, map_location="cpu"))
 
-        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=cfg.training.stage2.K)
-        pipeline.eval()
+        pipeline_exp: nn.Module = SUTRAMInferencePipeline(backbone, sr_head, mix_head, K=int(cfg.training.stage2.K))
+        pipeline_exp.eval()
 
         os.makedirs("output/onnx", exist_ok=True)
         dummy_in = torch.randn(1, 1, 256, 256)
         torch.onnx.export(
-            pipeline, dummy_in, "output/onnx/sutram_pipeline.onnx",
+            pipeline_exp, (dummy_in,), "output/onnx/sutram_pipeline.onnx",
             input_names=["input_tir_200m"],
             output_names=["sr_tir_100m", "color_rgb_100m"],
             dynamic_axes={"input_tir_200m": {2: "height", 3: "width"}}
