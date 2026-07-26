@@ -1,11 +1,14 @@
 import os
 import glob
 import random
+import logging
 from typing import List, Dict, Any, Optional
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from utils.normalization import normalize_tir, normalize_rgb
+
+logger = logging.getLogger(__name__)
 
 class PatchDataset(Dataset):
     """
@@ -26,9 +29,10 @@ class PatchDataset(Dataset):
             product_dirs = []
             for pid in product_ids:
                 pdir = os.path.join(patches_dir, pid)
-                if not os.path.exists(pdir) or not os.path.isdir(pdir):
-                    raise FileNotFoundError(f"CRITICAL: Configured scene directory '{pid}' could not be found under {patches_dir}")
-                product_dirs.append(pdir)
+                if os.path.exists(pdir) and os.path.isdir(pdir):
+                    product_dirs.append(pdir)
+                else:
+                    logger.warning(f"Configured scene directory '{pid}' not found under {patches_dir}, skipping.")
 
         for pdir in product_dirs:
             p_samples = sorted(glob.glob(os.path.join(pdir, "*_patch_*")))
