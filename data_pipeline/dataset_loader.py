@@ -42,8 +42,8 @@ class PatchDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: Any) -> Dict[str, torch.Tensor]:
-        sample_path = self.samples[idx]
+    def __getitem__(self, index: Any) -> Dict[str, torch.Tensor]:
+        sample_path = self.samples[index]
         patch_name = os.path.basename(sample_path)
 
         tir_200m_path = os.path.join(sample_path, f"{patch_name}_tir_200m.npy")
@@ -125,5 +125,5 @@ class EnforceNPYOnlyDataset(Dataset):
     def __len__(self) -> int:
         return len(self.file_list)
 
-    def __getitem__(self, idx: Any) -> Any:
-        return np.load(self.file_list[idx])
+    def __getitem__(self, index: Any) -> Any:
+        return np.load(self.file_list[index])
