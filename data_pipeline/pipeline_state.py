@@ -2,6 +2,7 @@ import os
 import json
 import glob
 import hashlib
+import shutil
 import logging
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,31 @@ class PipelineState:
             json.dump(self.data, f, indent=2)
         os.replace(tmp_path, self.state_path)
 
+    def purge_orphaned_products(self, valid_product_ids, patches_dir):
+        """
+        Removes patch directories and index records for products no longer present in input_dir.
+        """
+        valid_set = set(valid_product_ids)
+        changed = False
+
+        recorded_ids = list(self.data.get("products", {}).keys())
+        for pid in recorded_ids:
+            if pid not in valid_set:
+                logger.info(f"Purging index state for deleted product: {pid}")
+                del self.data["products"][pid]
+                changed = True
+
+        if os.path.exists(patches_dir):
+            for item in os.listdir(patches_dir):
+                item_path = os.path.join(patches_dir, item)
+                if os.path.isdir(item_path) and item not in valid_set:
+                    logger.info(f"Purging orphaned patch directory from disk: {item_path}")
+                    shutil.rmtree(item_path)
+                    changed = True
+
+        if changed:
+            self.save()
+
     def is_product_dataset_valid(self, product_dir, patches_dir):
         product_id = os.path.basename(product_dir.rstrip('/\\'))
         if product_id not in self.data["products"]:
@@ -106,7 +132,6 @@ class PipelineState:
         if prod_state.get("dataset_pipeline_signature") != current_ds_sig:
             return False
 
-        # Validate that actual patch files exist and are non-empty
         target_dir = os.path.join(patches_dir, product_id)
         if not os.path.exists(target_dir):
             return False
@@ -116,7 +141,6 @@ class PipelineState:
         if expected_count <= 0 or len(patch_dirs) != expected_count:
             return False
 
-        # Lightweight structure check
         for pdir in patch_dirs[:3]:
             p_name = os.path.basename(pdir)
             f1 = os.path.join(pdir, f"{p_name}_rgb_100m.npy")
@@ -169,7 +193,6 @@ class PipelineState:
             "dataset_state_hash": self.get_dataset_hash(),
             "checkpoint_dir": checkpoint_dir
         }
-        # Invalidate stage2 when stage1 is re-trained
         self.data["stage2"] = {}
         self.save()
 
