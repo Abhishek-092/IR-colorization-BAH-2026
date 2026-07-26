@@ -4,12 +4,13 @@ import glob
 import hashlib
 import shutil
 import logging
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 STATE_FILE_PATH = os.path.join("output", "pipeline_state.json")
 
-def compute_file_hash(filepath):
+def compute_file_hash(filepath: str) -> str:
     """Computes SHA256 of a code/config file for stage signature tracking."""
     if not os.path.exists(filepath):
         return ""
@@ -18,12 +19,12 @@ def compute_file_hash(filepath):
         hasher.update(f.read())
     return hasher.hexdigest()[:16]
 
-def get_dataset_pipeline_signature():
+def get_dataset_pipeline_signature() -> str:
     """Generates a signature for dataset preparation logic & config."""
     sig_str = compute_file_hash("configs/data.yaml") + compute_file_hash("data_pipeline/prepare_dataset.py")
     return hashlib.sha256(sig_str.encode()).hexdigest()[:16]
 
-def get_stage1_pipeline_signature():
+def get_stage1_pipeline_signature() -> str:
     """Generates a signature for Stage 1 training logic & config."""
     sig_str = (
         compute_file_hash("configs/training.yaml") +
@@ -33,7 +34,7 @@ def get_stage1_pipeline_signature():
     )
     return hashlib.sha256(sig_str.encode()).hexdigest()[:16]
 
-def get_stage2_pipeline_signature():
+def get_stage2_pipeline_signature() -> str:
     """Generates a signature for Stage 2 training logic & config."""
     sig_str = (
         compute_file_hash("configs/training.yaml") +
@@ -42,7 +43,7 @@ def get_stage2_pipeline_signature():
     )
     return hashlib.sha256(sig_str.encode()).hexdigest()[:16]
 
-def get_product_input_signature(product_dir):
+def get_product_input_signature(product_dir: str) -> str:
     """
     Creates a lightweight input signature for a Landsat product directory
     using band filenames, file sizes, and modification timestamps (no heavy file reads).
@@ -56,7 +57,7 @@ def get_product_input_signature(product_dir):
     if not files:
         return ""
 
-    meta_tokens = []
+    meta_tokens: List[str] = []
     for fpath in sorted(files):
         try:
             stat = os.stat(fpath)
@@ -68,15 +69,17 @@ def get_product_input_signature(product_dir):
     return hashlib.sha256(joined.encode()).hexdigest()[:16]
 
 class PipelineState:
-    def __init__(self, state_path=STATE_FILE_PATH):
-        self.state_path = state_path
-        self.data = self._load()
+    def __init__(self, state_path: str = STATE_FILE_PATH):
+        self.state_path: str = state_path
+        self.data: Dict[str, Any] = self._load()
 
-    def _load(self):
+    def _load(self) -> Dict[str, Any]:
         if os.path.exists(self.state_path):
             try:
                 with open(self.state_path, "r") as f:
-                    return json.load(f)
+                    content = json.load(f)
+                    if isinstance(content, dict):
+                        return content
             except Exception as e:
                 logger.warning(f"Could not parse pipeline state file {self.state_path}: {e}")
         return {
@@ -86,25 +89,26 @@ class PipelineState:
             "stage2": {}
         }
 
-    def save(self):
+    def save(self) -> None:
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         tmp_path = self.state_path + ".tmp"
         with open(tmp_path, "w") as f:
             json.dump(self.data, f, indent=2)
         os.replace(tmp_path, self.state_path)
 
-    def purge_orphaned_products(self, valid_product_ids, patches_dir):
+    def purge_orphaned_products(self, valid_product_ids: List[str], patches_dir: str) -> None:
         """
         Removes patch directories and index records for products no longer present in input_dir.
         """
         valid_set = set(valid_product_ids)
         changed = False
 
-        recorded_ids = list(self.data.get("products", {}).keys())
+        products_dict: Dict[str, Any] = self.data.get("products", {})
+        recorded_ids = list(products_dict.keys())
         for pid in recorded_ids:
             if pid not in valid_set:
                 logger.info(f"Purging index state for deleted product: {pid}")
-                del self.data["products"][pid]
+                products_dict.pop(pid, None)
                 changed = True
 
         if os.path.exists(patches_dir):
@@ -118,18 +122,19 @@ class PipelineState:
         if changed:
             self.save()
 
-    def is_product_dataset_valid(self, product_dir, patches_dir):
+    def is_product_dataset_valid(self, product_dir: str, patches_dir: str) -> bool:
         product_id = os.path.basename(product_dir.rstrip('/\\'))
-        if product_id not in self.data["products"]:
+        products_dict: Dict[str, Any] = self.data.get("products", {})
+        if product_id not in products_dict:
             return False
 
-        prod_state = self.data["products"][product_id]
+        prod_state: Dict[str, Any] = products_dict.get(product_id, {})
         current_input_sig = get_product_input_signature(product_dir)
         current_ds_sig = get_dataset_pipeline_signature()
 
-        if prod_state.get("input_signature") != current_input_sig:
+        if str(prod_state.get("input_signature", "")) != current_input_sig:
             return False
-        if prod_state.get("dataset_pipeline_signature") != current_ds_sig:
+        if str(prod_state.get("dataset_pipeline_signature", "")) != current_ds_sig:
             return False
 
         target_dir = os.path.join(patches_dir, product_id)
@@ -137,7 +142,7 @@ class PipelineState:
             return False
 
         patch_dirs = glob.glob(os.path.join(target_dir, f"{product_id}_patch_*"))
-        expected_count = prod_state.get("patch_count", 0)
+        expected_count = int(prod_state.get("patch_count", 0))
         if expected_count <= 0 or len(patch_dirs) != expected_count:
             return False
 
@@ -153,28 +158,31 @@ class PipelineState:
 
         return True
 
-    def record_product_dataset(self, product_dir, patch_count):
+    def record_product_dataset(self, product_dir: str, patch_count: int) -> None:
         product_id = os.path.basename(product_dir.rstrip('/\\'))
-        self.data["products"][product_id] = {
+        products_dict: Dict[str, Any] = self.data.get("products", {})
+        products_dict[product_id] = {
             "input_signature": get_product_input_signature(product_dir),
             "dataset_pipeline_signature": get_dataset_pipeline_signature(),
             "patch_count": patch_count
         }
+        self.data["products"] = products_dict
         self.save()
 
-    def get_dataset_hash(self):
+    def get_dataset_hash(self) -> str:
         """Hashes the current dataset state across all recorded products."""
-        prod_sigs = [f"{pid}:{info['input_signature']}" for pid, info in sorted(self.data["products"].items())]
+        products_dict: Dict[str, Any] = self.data.get("products", {})
+        prod_sigs = [f"{pid}:{info.get('input_signature', '')}" for pid, info in sorted(products_dict.items()) if isinstance(info, dict)]
         return hashlib.sha256("|".join(prod_sigs).encode()).hexdigest()[:16]
 
-    def is_stage1_valid(self, checkpoint_dir):
-        st = self.data.get("stage1", {})
-        if not st.get("completed", False):
+    def is_stage1_valid(self, checkpoint_dir: str) -> bool:
+        st: Dict[str, Any] = self.data.get("stage1", {})
+        if not bool(st.get("completed", False)):
             return False
 
-        if st.get("stage1_pipeline_signature") != get_stage1_pipeline_signature():
+        if str(st.get("stage1_pipeline_signature", "")) != get_stage1_pipeline_signature():
             return False
-        if st.get("dataset_state_hash") != self.get_dataset_hash():
+        if str(st.get("dataset_state_hash", "")) != self.get_dataset_hash():
             return False
 
         bb_ckpt = os.path.join(checkpoint_dir, "backbone_stage1.pth")
@@ -186,7 +194,7 @@ class PipelineState:
 
         return True
 
-    def record_stage1_completion(self, checkpoint_dir):
+    def record_stage1_completion(self, checkpoint_dir: str) -> None:
         self.data["stage1"] = {
             "completed": True,
             "stage1_pipeline_signature": get_stage1_pipeline_signature(),
@@ -196,18 +204,19 @@ class PipelineState:
         self.data["stage2"] = {}
         self.save()
 
-    def is_stage2_valid(self, checkpoint_dir):
-        st = self.data.get("stage2", {})
-        if not st.get("completed", False):
+    def is_stage2_valid(self, checkpoint_dir: str) -> bool:
+        st: Dict[str, Any] = self.data.get("stage2", {})
+        if not bool(st.get("completed", False)):
             return False
 
-        if st.get("stage2_pipeline_signature") != get_stage2_pipeline_signature():
+        if str(st.get("stage2_pipeline_signature", "")) != get_stage2_pipeline_signature():
             return False
-        if st.get("dataset_state_hash") != self.get_dataset_hash():
+        if str(st.get("dataset_state_hash", "")) != self.get_dataset_hash():
             return False
         
-        st1_hash = hashlib.sha256(json.dumps(self.data.get("stage1", {})).encode()).hexdigest()[:16]
-        if st.get("stage1_state_hash") != st1_hash:
+        st1_data: Dict[str, Any] = self.data.get("stage1", {})
+        st1_hash = hashlib.sha256(json.dumps(st1_data).encode()).hexdigest()[:16]
+        if str(st.get("stage1_state_hash", "")) != st1_hash:
             return False
 
         mix_ckpt = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
@@ -216,8 +225,9 @@ class PipelineState:
 
         return True
 
-    def record_stage2_completion(self, checkpoint_dir):
-        st1_hash = hashlib.sha256(json.dumps(self.data.get("stage1", {})).encode()).hexdigest()[:16]
+    def record_stage2_completion(self, checkpoint_dir: str) -> None:
+        st1_data: Dict[str, Any] = self.data.get("stage1", {})
+        st1_hash = hashlib.sha256(json.dumps(st1_data).encode()).hexdigest()[:16]
         self.data["stage2"] = {
             "completed": True,
             "stage2_pipeline_signature": get_stage2_pipeline_signature(),
