@@ -184,13 +184,17 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
 def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
     product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
-    if not product_dirs:
-        logger.error(f"No products found in {input_dir}")
-        return
-        
     os.makedirs(output_dir, exist_ok=True)
     manifest_path = os.path.join(output_dir, "manifest.csv")
     state = PipelineState()
+
+    # Automatically purge patch folders & state records for any products deleted from input/
+    valid_pids = [os.path.basename(d) for d in product_dirs]
+    state.purge_orphaned_products(valid_pids, output_dir)
+    
+    if not product_dirs:
+        logger.error(f"No products found in {input_dir}")
+        return
     
     cfg_path = os.path.join(root_dir, "configs", "data.yaml")
     splits_map = {}
