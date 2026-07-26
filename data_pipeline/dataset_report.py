@@ -19,11 +19,10 @@ def generate_dataset_report(patches_dir, product_ids=None):
         product_dirs = []
         for product_id in product_ids:
             product_dir = os.path.join(patches_dir, product_id)
-            if not os.path.isdir(product_dir):
-                raise FileNotFoundError(
-                    f"Configured training scene '{product_id}' is missing from {patches_dir}"
-                )
-            product_dirs.append(product_dir)
+            if os.path.isdir(product_dir):
+                product_dirs.append(product_dir)
+            else:
+                logger.warning(f"Configured training scene '{product_id}' is missing from {patches_dir}, skipping from report.")
 
     sample_dirs = []
     for product_dir in product_dirs:
