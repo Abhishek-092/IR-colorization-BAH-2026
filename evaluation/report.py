@@ -73,14 +73,21 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
+        final_path = os.path.join("checkpoints", "sutram_final.pth")
 
-        if not (os.path.exists(bb_path) and os.path.exists(sr_path) and os.path.exists(mix_path)):
+        if os.path.exists(bb_path) and os.path.exists(sr_path) and os.path.exists(mix_path):
+            backbone.load_state_dict(torch.load(bb_path, map_location=device))
+            sr_head.load_state_dict(torch.load(sr_path, map_location=device))
+            mixture_head.load_state_dict(torch.load(mix_path, map_location=device))
+        elif os.path.exists(final_path):
+            logger.info(f"Loading evaluation weights from release package: {final_path}")
+            checkpoint = torch.load(final_path, map_location=device)
+            backbone.load_state_dict(checkpoint["backbone_state_dict"])
+            sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
+            mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
+        else:
             logger.error("Trained model checkpoints are missing. Please complete training first.")
             return
-
-        backbone.load_state_dict(torch.load(bb_path, map_location=device))
-        sr_head.load_state_dict(torch.load(sr_path, map_location=device))
-        mixture_head.load_state_dict(torch.load(mix_path, map_location=device))
 
     backbone.eval()
     sr_head.eval()
@@ -151,6 +158,10 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
     rgb_scales = np.array(rgb_scales)
     sensor_tags = np.array(sensor_tags)
 
+    if len(sr_preds) == 0:
+        logger.error(f"No valid evaluation patches found in split '{split}'. Cannot calculate metrics.")
+        return
+
     def calculate_metrics_subset(mask):
         if not np.any(mask):
             return None
@@ -179,7 +190,10 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
         }
 
     # 1. Overall Metrics
-    overall_metrics = calculate_metrics_subset(np.ones(len(eval_dataset), dtype=bool))
+    overall_metrics = calculate_metrics_subset(np.ones(len(sr_preds), dtype=bool))
+    if overall_metrics is None:
+        logger.error(f"Calculated overall_metrics is None for split '{split}'. Cannot save report.")
+        return
     
     # 2. Landsat-8 subset
     l8_mask = (sensor_tags == "L8")
@@ -235,10 +249,14 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
         os.path.join("experiments", cfg.experiment_id, "validation_plots", f"sparsification_curve_{split}.png")
     )
     
-    plot_calibration_error(
-        overall_metrics["ece_bins"],
-        os.path.join("experiments", cfg.experiment_id, "validation_plots", f"calibration_reliability_{split}.png")
-    )
+    ece_bins = overall_metrics.get("ece_bins") if overall_metrics else None
+    if ece_bins is not None:
+        plot_calibration_error(
+            ece_bins,
+            os.path.join("experiments", cfg.experiment_id, "validation_plots", f"calibration_reliability_{split}.png")
+        )
+    else:
+        logger.warning("Skipping calibration reliability plot because ece_bins are unavailable.")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
