@@ -250,14 +250,17 @@ if tir_200 is not None:
             try:
                 with open(m_path, "r") as f:
                     data = json.load(f)
-                    if "Overall" in data:
-                        psnr_val = data["Overall"].get("psnr")
-                        ssim_val = data["Overall"].get("ssim")
-                        break
+                    overall_dict = data.get("Overall")
+                    if isinstance(overall_dict, dict):
+                        psnr_val = overall_dict.get("psnr")
+                        ssim_val = overall_dict.get("ssim")
+                        if psnr_val is not None and ssim_val is not None:
+                            break
                     elif "psnr" in data:
                         psnr_val = data.get("psnr")
                         ssim_val = data.get("ssim")
-                        break
+                        if psnr_val is not None and ssim_val is not None:
+                            break
             except Exception:
                 pass
                 
