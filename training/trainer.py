@@ -19,6 +19,7 @@ from training.loss_functions import (
 )
 from data_pipeline.dataset_loader import PatchDataset
 from data_pipeline.dataset_report import generate_dataset_report
+from data_pipeline.pipeline_state import PipelineState
 from training.utils.seed import set_seed
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,18 @@ class UnifiedTrainer:
         self.checkpoint_dir = os.path.join(self.exp_dir, "checkpoints")
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
+        # Validate splits to prevent leakage and enforce strict criteria
+        from data_pipeline.split_validator import run_all_validation
+        import omegaconf
+        splits_dict = omegaconf.OmegaConf.to_container(cfg.data.splits, resolve=True)
+        run_all_validation(splits_dict, cfg.data.patches_dir, input_dir=cfg.data.input_dir)
+
         # Init models
         self.backbone = ResNetBackbone(in_channels=1).to(self.device)
         self.sr_head = SRHead().to(self.device)
         self.mixture_head = MixtureHead(K=cfg.training.stage2.K).to(self.device)
 
-        # Setup dataset and loader
+        # Setup dataset and loader with async multi-worker prefetching
         self.train_dataset = PatchDataset(
             patches_dir=cfg.data.patches_dir,
             product_ids=cfg.data.splits.train,
@@ -53,23 +60,39 @@ class UnifiedTrainer:
             product_ids=cfg.data.splits.val
         )
         
+        num_workers = min(4, os.cpu_count() or 1)
+        pin_memory = torch.cuda.is_available()
+
         self.train_loader = DataLoader(
             self.train_dataset,
             batch_size=cfg.training.stage1.batch_size,
             shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
             drop_last=False
         )
         self.val_loader = DataLoader(
             self.val_dataset,
             batch_size=cfg.training.stage1.batch_size,
-            shuffle=False
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory
         )
 
-        logger.info(f"Loaded train samples: {len(self.train_dataset)}, val samples: {len(self.val_dataset)}")
+        logger.info(f"Loaded train samples: {len(self.train_dataset)}, val samples: {len(self.val_dataset)} (num_workers={num_workers}, pin_memory={pin_memory})")
 
     def train_stage1_sr(self):
         """Trains the backbone and SR head deterministically."""
         logger.info("--- Starting Stage 1: Super-Resolution Training ---")
+        
+        bb_path = os.path.join(self.checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth")
+        if os.path.exists(bb_path):
+            self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
+            logger.info("Loaded existing Stage 1 backbone weights successfully.")
+        if os.path.exists(sr_path):
+            self.sr_head.load_state_dict(torch.load(sr_path, map_location=self.device))
+            logger.info("Loaded existing Stage 1 SR head weights successfully.")
         optimizer = optim.AdamW(
             list(self.backbone.parameters()) + list(self.sr_head.parameters()),
             lr=self.cfg.training.stage1.lr,
@@ -93,8 +116,6 @@ class UnifiedTrainer:
             train_loss = 0.0
 
             for batch in self.train_loader:
-                # low-res input: tir_200m (B, 1, 256, 256)
-                # target high-res: tir_100m_512 (B, 1, 512, 512)
                 lr_tir = batch["tir_200m"].to(self.device)
                 hr_tir = batch["tir_100m_512"].to(self.device)
 
@@ -125,9 +146,17 @@ class UnifiedTrainer:
             # Checkpoint save
             if val_psnr > best_psnr:
                 best_psnr = val_psnr
-                torch.save(self.backbone.state_dict(), os.path.join(self.checkpoint_dir, "backbone_stage1.pth"))
-                torch.save(self.sr_head.state_dict(), os.path.join(self.checkpoint_dir, "sr_head_stage1.pth"))
+                bb_temp = os.path.join(self.checkpoint_dir, "backbone_stage1.pth.tmp")
+                sr_temp = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth.tmp")
+                torch.save(self.backbone.state_dict(), bb_temp)
+                torch.save(self.sr_head.state_dict(), sr_temp)
+                os.replace(bb_temp, os.path.join(self.checkpoint_dir, "backbone_stage1.pth"))
+                os.replace(sr_temp, os.path.join(self.checkpoint_dir, "sr_head_stage1.pth"))
                 logger.info(f"New best validation PSNR locked: {best_psnr:.2f} dB")
+
+        # Record stage 1 completion in central state
+        PipelineState().record_stage1_completion(self.checkpoint_dir)
+        logger.info("Stage 1 completion recorded in pipeline_state.json")
 
     def _validate_sr(self, l1_criterion):
         self.backbone.eval()
@@ -152,7 +181,7 @@ class UnifiedTrainer:
         return total_psnr / max(1, count)
 
     def train_stage2_color(self):
-        """Trains the mixture head with backbone weights frozen."""
+        """Trains the mixture head while adapting the shared backbone."""
         logger.info("--- Starting Stage 2: Mixture Colorization Training ---")
         
         # Load backbone weights from Stage 1
@@ -161,6 +190,13 @@ class UnifiedTrainer:
             self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
             logger.info("Loaded Stage 1 backbone weights successfully.")
 
+        mix_path = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth")
+        loaded_mix = False
+        if os.path.exists(mix_path):
+            self.mixture_head.load_state_dict(torch.load(mix_path, map_location=self.device))
+            logger.info("Loaded existing Stage 2 mixture head weights successfully.")
+            loaded_mix = True
+
         # Unfreeze Backbone to allow features to adapt to color targets; keep SR Head frozen
         for p in self.backbone.parameters():
             p.requires_grad = True
@@ -168,7 +204,8 @@ class UnifiedTrainer:
             p.requires_grad = False
 
         # Quantile-based component-mean initialization
-        self._init_mixture_means_with_quantiles()
+        if not loaded_mix:
+            self._init_mixture_means_with_quantiles()
 
         optimizer = optim.AdamW(
             list(self.mixture_head.parameters()) + list(self.backbone.parameters()),
@@ -187,10 +224,11 @@ class UnifiedTrainer:
         best_loss = float("inf")
 
         for epoch in range(1, epochs + 1):
+            self.backbone.train()
             self.mixture_head.train()
+            self.sr_head.eval()
             train_loss = 0.0
 
-            # Calculate Softmax temperature annealing: decay linearly from temp_init to temp_final
             temp_init = self.cfg.training.stage2.temp_init
             temp_final = self.cfg.training.stage2.temp_final
             tau = max(temp_final, temp_init - (temp_init - temp_final) * (epoch / max(1, epochs // 2)))
@@ -200,14 +238,10 @@ class UnifiedTrainer:
                 target_rgb = batch["rgb_100m_512"].to(self.device)
 
                 optimizer.zero_grad()
-                with torch.no_grad():
-                    features = self.backbone(lr_tir)
-                    pred_sr = self.sr_head(features, lr_tir)
+                features = self.backbone(lr_tir)
+                pred_sr = self.sr_head(features, lr_tir).detach()
 
-                # Predict mixture parameters
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
-
-                # Apply softmax temperature division to logits
                 logit_weights = logit_weights / tau
 
                 loss = nll_criterion(logit_weights, means, log_scales, target_rgb)
@@ -219,17 +253,23 @@ class UnifiedTrainer:
             scheduler.step()
             train_loss /= len(self.train_loader)
 
-            # Validation Loss
-            val_loss = self._validate_color(nll_criterion)
+            val_loss = self._validate_color(nll_criterion, tau)
             logger.info(f"Epoch {epoch}/{epochs} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f} (temp={tau:.2f})")
 
-            # Checkpoint save
             if val_loss < best_loss:
                 best_loss = val_loss
-                torch.save(self.mixture_head.state_dict(), os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
+                mix_temp = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth.tmp")
+                torch.save(self.mixture_head.state_dict(), mix_temp)
+                os.replace(mix_temp, os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
                 logger.info(f"New best validation color loss locked: {best_loss:.4f}")
 
-    def _validate_color(self, criterion):
+        # Record stage 2 completion in central state
+        PipelineState().record_stage2_completion(self.checkpoint_dir)
+        logger.info("Stage 2 completion recorded in pipeline_state.json")
+
+    def _validate_color(self, criterion, tau=1.0):
+        self.backbone.eval()
+        self.sr_head.eval()
         self.mixture_head.eval()
         total_loss = 0.0
         count = 0
@@ -242,6 +282,8 @@ class UnifiedTrainer:
                 features = self.backbone(lr_tir)
                 pred_sr = self.sr_head(features, lr_tir)
                 logit_weights, means, log_scales = self.mixture_head(features, pred_sr)
+                
+                logit_weights = logit_weights / tau
 
                 loss = criterion(logit_weights, means, log_scales, target_rgb)
                 total_loss += loss.item()
@@ -252,38 +294,27 @@ class UnifiedTrainer:
     def _init_mixture_means_with_quantiles(self):
         """Initializes components' mean bias parameters from empirical quantiles."""
         logger.info("Running empirical quantile initialization for mixture components...")
-        report = generate_dataset_report(self.cfg.data.patches_dir)
+        report = generate_dataset_report(
+            self.cfg.data.patches_dir,
+            product_ids=list(self.cfg.data.splits.train),
+        )
         if not report:
             logger.warning("Could not build dataset report; skipping quantile mean init.")
             return
 
         K = self.cfg.training.stage2.K
-        
-        # We assign each component's mean bias based on the quantiles of RGB
-        # Quantiles are estimated from data for R, G, B channels
-        # Calculate K linearly spaced quantiles between 10% and 90%
         quantiles = np.linspace(10, 90, K)
         
-        # Read empirical values from report
-        # If report lacks them, fall back to safe approximations
         qr = np.array(report["rgb"].get("quantiles_r", [50.0] * K))
         qg = np.array(report["rgb"].get("quantiles_g", [50.0] * K))
         qb = np.array(report["rgb"].get("quantiles_b", [50.0] * K))
 
-        # Assign bias values inside projection conv of mixture head
-        # self.mixture_head.proj is a Conv2d(64, 7*K, 1)
-        # Bias tensor size: 7*K
         with torch.no_grad():
-            # Zero-out weights and set default biases
             self.mixture_head.proj.bias.fill_(0.0)
-            
             for k in range(K):
-                # Channel indexing match: bias[K + k*3 + c]
-                # channel 0 = Blue, channel 1 = Green, channel 2 = Red
-                # Scale from original 0-10000 reflectance range to [0, 255]
-                self.mixture_head.proj.bias.data[K + k * 3 + 0] = float(qb[min(k, len(qb)-1)]) * (255.0 / 10000.0)
-                self.mixture_head.proj.bias.data[K + k * 3 + 1] = float(qg[min(k, len(qg)-1)]) * (255.0 / 10000.0)
-                self.mixture_head.proj.bias.data[K + k * 3 + 2] = float(qr[min(k, len(qr)-1)]) * (255.0 / 10000.0)
+                self.mixture_head.proj.bias.data[K + k * 3 + 0] = float(qr[min(k, len(qr)-1)])
+                self.mixture_head.proj.bias.data[K + k * 3 + 1] = float(qg[min(k, len(qg)-1)])
+                self.mixture_head.proj.bias.data[K + k * 3 + 2] = float(qb[min(k, len(qb)-1)])
         
         logger.info(f"Successfully initialized {K} components' means with empirical quantiles.")
 

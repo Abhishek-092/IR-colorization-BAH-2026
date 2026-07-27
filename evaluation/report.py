@@ -20,9 +20,9 @@ from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
 
-def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=None):
+def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=None, split="val"):
     """
-    Evaluates the trained Stage 1 and Stage 2 models on the validation split.
+    Evaluates the trained Stage 1 and Stage 2 models on the specified split (val or test).
     Saves JSON metrics and generates diagnostic plots.
     """
     # Load configuration
@@ -35,13 +35,26 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
 
     device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
     
+    # Resolve split list
+    if split == "val":
+        product_ids = cfg.data.splits.val
+    elif split == "test":
+        product_ids = cfg.data.splits.test
+    else:
+        raise ValueError(f"Unknown split: {split}")
+
+    # Validate splits using split_validator
+    from data_pipeline.split_validator import run_all_validation
+    splits_dict = OmegaConf.to_container(cfg.data.splits, resolve=True)
+    run_all_validation(splits_dict, cfg.data.patches_dir, input_dir=cfg.data.input_dir)
+
     # Load dataset
-    val_dataset = PatchDataset(
+    eval_dataset = PatchDataset(
         patches_dir=cfg.data.patches_dir,
-        product_ids=cfg.data.splits.val
+        product_ids=product_ids
     )
-    if len(val_dataset) == 0:
-        logger.error("Validation dataset is empty. Cannot generate report.")
+    if len(eval_dataset) == 0:
+        logger.error(f"Evaluation dataset for split '{split}' is empty. Cannot generate report.")
         return
 
     backbone = ResNetBackbone().to(device)
@@ -73,7 +86,7 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
     sr_head.eval()
     mixture_head.eval()
 
-    logger.info("Computing metrics over validation dataset...")
+    logger.info(f"Computing metrics over {split} dataset ({len(eval_dataset)} patches)...")
     
     sr_preds = []
     sr_targets = []
@@ -82,14 +95,24 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
     rgb_targets = []
     rgb_scales = []
     
+    # Store sensor tags to segment metrics
+    sensor_tags = [] # 'L8' or 'L9'
+    scene_ids = []
+    
     with torch.no_grad():
-        for i in range(len(val_dataset)):
-            sample = val_dataset[i]
+        for i in range(len(eval_dataset)):
+            sample = eval_dataset[i]
             # low-res input
             lr_tir = sample["tir_200m"].unsqueeze(0).to(device)
             # targets
             hr_tir = sample["tir_100m_512"].squeeze().numpy()
             hr_rgb = sample["rgb_100m_512"].numpy()
+            
+            # Determine source scene and sensor type
+            sample_path = eval_dataset.samples[i]
+            scene_id = os.path.basename(os.path.dirname(sample_path))
+            scene_ids.append(scene_id)
+            sensor_tags.append("L8" if scene_id.startswith("LC08") else "L9")
             
             features = backbone(lr_tir)
             pred_sr = sr_head(features, lr_tir)
@@ -101,7 +124,6 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
             sr_targets.append(hr_tir)
 
             # Stage 2 predictions (Decode dominant color and scales)
-            # Compute mixing weights
             pi = torch.softmax(logit_weights, dim=1).squeeze().cpu().numpy() # (K, H, W)
             means_np = means.squeeze().cpu().numpy() # (K, 3, H, W)
             log_scales_np = log_scales.squeeze().cpu().numpy() # (K, 3, H, W)
@@ -112,67 +134,110 @@ def run_evaluation_report(config_path="configs/base_config.yaml", weights_path=N
             
             # Extract dominant mean and scale per pixel
             H, W = k_star.shape
-            dom_mean = np.zeros((3, H, W))
-            dom_scale = np.zeros((3, H, W))
             
-            for h in range(H):
-                for w in range(W):
-                    k = k_star[h, w]
-                    dom_mean[:, h, w] = means_np[k, :, h, w]
-                    dom_scale[:, h, w] = scales_np[k, :, h, w]
+            # Vectorized dominant component selection
+            k_star_expanded = np.expand_dims(k_star, axis=(0, 1)).repeat(3, axis=1)
+            dom_mean = np.take_along_axis(means_np, k_star_expanded, axis=0).squeeze(0)
+            dom_scale = np.take_along_axis(scales_np, k_star_expanded, axis=0).squeeze(0)
 
             rgb_preds.append(dom_mean)
             rgb_targets.append(hr_rgb)
             rgb_scales.append(dom_scale)
 
-    # 1. Compute SR metrics
     sr_preds = np.array(sr_preds)
     sr_targets = np.array(sr_targets)
-    psnr_val = compute_psnr(sr_preds, sr_targets, peak=1.0)
-    rmse_val = compute_bt_rmse(sr_preds, sr_targets)
-    
-    # SSIM computed per image and averaged
-    ssim_list = [compute_ssim(p, t) for p, t in zip(sr_preds, sr_targets)]
-    ssim_val = np.mean(ssim_list)
-
-    # 2. Compute Color metrics
     rgb_preds = np.array(rgb_preds)
     rgb_targets = np.array(rgb_targets)
     rgb_scales = np.array(rgb_scales)
+    sensor_tags = np.array(sensor_tags)
 
-    ece_val = compute_regression_ece(rgb_preds, rgb_scales, rgb_targets)
-    
-    # Compute error maps for sparsification
-    abs_errors = np.abs(rgb_preds - rgb_targets).mean(axis=1) # Mean L1 error across RGB channels
-    mean_scales = rgb_scales.mean(axis=1) # Mean scale (uncertainty)
-    
-    auc_val, error_curve = compute_sparsification_auc(abs_errors, mean_scales)
+    def calculate_metrics_subset(mask):
+        if not np.any(mask):
+            return None
+        sub_sr_preds = sr_preds[mask]
+        sub_sr_targets = sr_targets[mask]
+        sub_rgb_preds = rgb_preds[mask]
+        sub_rgb_targets = rgb_targets[mask]
+        sub_rgb_scales = rgb_scales[mask]
+        
+        psnr_val = compute_psnr(sub_sr_preds, sub_sr_targets, peak=1.0)
+        rmse_val = compute_bt_rmse(sub_sr_preds, sub_sr_targets)
+        ssim_val = np.mean([compute_ssim(p, t) for p, t in zip(sub_sr_preds, sub_sr_targets)])
+        ece_val, empirical_coverages = compute_regression_ece(sub_rgb_preds, sub_rgb_scales, sub_rgb_targets)
+        
+        abs_errors = np.abs(sub_rgb_preds - sub_rgb_targets).mean(axis=1)
+        mean_scales = sub_rgb_scales.mean(axis=1)
+        auc_val, _ = compute_sparsification_auc(abs_errors, mean_scales)
+        
+        return {
+            "psnr": float(psnr_val),
+            "ssim": float(ssim_val),
+            "bt_rmse": float(rmse_val),
+            "ece": float(ece_val),
+            "ece_bins": empirical_coverages,
+            "sparsification_auc": float(auc_val)
+        }
 
-    # Save metrics
-    metrics = {
-        "psnr": float(psnr_val),
-        "ssim": float(ssim_val),
-        "bt_rmse": float(rmse_val),
-        "ece": float(ece_val),
-        "sparsification_auc": float(auc_val)
+    # 1. Overall Metrics
+    overall_metrics = calculate_metrics_subset(np.ones(len(eval_dataset), dtype=bool))
+    
+    # 2. Landsat-8 subset
+    l8_mask = (sensor_tags == "L8")
+    l8_metrics = calculate_metrics_subset(l8_mask)
+    
+    # 3. Landsat-9 subset
+    l9_mask = (sensor_tags == "L9")
+    l9_metrics = calculate_metrics_subset(l9_mask)
+
+    # Determine subset labels (e.g. single-scene vs satellite-wide)
+    unique_l8_scenes = sorted(list(set([scene_ids[i] for i in range(len(scene_ids)) if sensor_tags[i] == "L8"])))
+    unique_l9_scenes = sorted(list(set([scene_ids[i] for i in range(len(scene_ids)) if sensor_tags[i] == "L9"])))
+    
+    l8_label = "Held-out Landsat-8 scene" if len(unique_l8_scenes) == 1 else "Landsat-8 subset"
+    if len(unique_l8_scenes) == 1:
+        l8_label += f" ({unique_l8_scenes[0]})"
+        
+    l9_label = "Held-out Landsat-9 scene" if len(unique_l9_scenes) == 1 else "Landsat-9 subset"
+    if len(unique_l9_scenes) == 1:
+        l9_label += f" ({unique_l9_scenes[0]})"
+
+    report_data = {
+        "Overall": overall_metrics,
+        l8_label: l8_metrics,
+        l9_label: l9_metrics
     }
 
-    metrics_path = os.path.join("experiments", cfg.experiment_id, "metrics.json")
+    # Save to metrics.json
+    metrics_dir = os.path.join("experiments", cfg.experiment_id)
+    os.makedirs(metrics_dir, exist_ok=True)
+    metrics_path = os.path.join(metrics_dir, f"metrics_{split}.json")
     with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=4)
+        json.dump(report_data, f, indent=4)
     logger.info(f"Saved evaluation metrics to: {metrics_path}")
 
-    # Generate plots
+    # Output to console
+    print(f"\n================ EVALUATION REPORT ON SPLIT: {split.upper()} ================")
+    print(f"Overall Metrics: {overall_metrics}")
+    if l8_metrics:
+        print(f"{l8_label} Metrics: {l8_metrics}")
+    if l9_metrics:
+        print(f"{l9_label} Metrics: {l9_metrics}")
+    print("=================================================================\n")
+
+    # Generate plots for overall
+    os.makedirs(os.path.join("experiments", cfg.experiment_id, "validation_plots"), exist_ok=True)
+    abs_errors_all = np.abs(rgb_preds - rgb_targets).mean(axis=1)
+    mean_scales_all = rgb_scales.mean(axis=1)
+    _, error_curve = compute_sparsification_auc(abs_errors_all, mean_scales_all)
+    
     plot_sparsification_curve(
         error_curve,
-        os.path.join("experiments", cfg.experiment_id, "validation_plots", "sparsification_curve.png")
+        os.path.join("experiments", cfg.experiment_id, "validation_plots", f"sparsification_curve_{split}.png")
     )
     
-    # Dummy ece reliability diagram representation
-    dummy_ece_bins = np.linspace(0.1, 0.9, 10) * (1.0 - ece_val)
     plot_calibration_error(
-        dummy_ece_bins,
-        os.path.join("experiments", cfg.experiment_id, "validation_plots", "calibration_reliability.png")
+        overall_metrics["ece_bins"],
+        os.path.join("experiments", cfg.experiment_id, "validation_plots", f"calibration_reliability_{split}.png")
     )
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def generate_dataset_report(patches_dir):
+def generate_dataset_report(patches_dir, product_ids=None):
     """
     Computes statistical properties over the entire patch dataset.
     Outputs:
@@ -13,7 +13,20 @@ def generate_dataset_report(patches_dir):
     - Empirical quantiles of the RGB distribution (crucial for Mode-Redundancy init)
     - Total sample count and missing value verification
     """
-    sample_dirs = glob.glob(os.path.join(patches_dir, "*", "sample_*"))
+    if product_ids is None:
+        product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
+    else:
+        product_dirs = []
+        for product_id in product_ids:
+            product_dir = os.path.join(patches_dir, product_id)
+            if os.path.isdir(product_dir):
+                product_dirs.append(product_dir)
+            else:
+                logger.warning(f"Configured training scene '{product_id}' is missing from {patches_dir}, skipping from report.")
+
+    sample_dirs = []
+    for product_dir in product_dirs:
+        sample_dirs.extend(sorted(glob.glob(os.path.join(product_dir, "*_patch_*"))))
     if not sample_dirs:
         logger.error(f"No patches found in {patches_dir}")
         return None
@@ -24,23 +37,35 @@ def generate_dataset_report(patches_dir):
     tir_100_vals = []
     rgb_vals = []
 
-    # Sample a subset or all if small to avoid memory overflow
     step = max(1, len(sample_dirs) // 50)
     sampled_dirs = sample_dirs[::step]
 
     for sdir in sampled_dirs:
         try:
-            tir_200 = np.load(os.path.join(sdir, "tir_200m.npy"))
-            tir_100 = np.load(os.path.join(sdir, "tir_100m_512.npy"))
-            rgb = np.load(os.path.join(sdir, "rgb_100m_512.npy"))
+            patch_name = os.path.basename(sdir)
+            tir_200 = np.load(os.path.join(sdir, f"{patch_name}_tir_200m.npy"))
+            tir_100 = np.load(os.path.join(sdir, f"{patch_name}_tir_100m.npy"))
+            rgb = np.load(os.path.join(sdir, f"{patch_name}_rgb_100m.npy"))
+
+            # Normalize values dynamically
+            if tir_200.max() > 255.0:
+                tir_200 = np.clip((tir_200 - 20000.0) / 15000.0, 0.0, 1.0)
+            else:
+                tir_200 = np.clip(tir_200 / 255.0, 0.0, 1.0)
+
+            if tir_100.max() > 255.0:
+                tir_100 = np.clip((tir_100 - 20000.0) / 15000.0, 0.0, 1.0)
+            else:
+                tir_100 = np.clip(tir_100 / 255.0, 0.0, 1.0)
+
+            if rgb.ndim == 3 and rgb.shape[0] != 3:
+                rgb = np.moveaxis(rgb, -1, 0)
+            if rgb.max() > 255.0:
+                rgb = np.clip((rgb / 10000.0) * 255.0, 0.0, 255.0)
 
             # Downsample for faster statistics
             tir_200_vals.append(tir_200[::4, ::4].flatten())
             tir_100_vals.append(tir_100[::8, ::8].flatten())
-            
-            # RGB shape (C, H, W) or (H, W, C)
-            if rgb.ndim == 3 and rgb.shape[0] != 3:
-                rgb = np.moveaxis(rgb, -1, 0)
             rgb_vals.append(rgb[:, ::8, ::8].reshape(3, -1))
 
         except Exception as e:
@@ -70,9 +95,9 @@ def generate_dataset_report(patches_dir):
         "rgb": {
             "mean": np.mean(all_rgb, axis=1).tolist(),
             "std": np.std(all_rgb, axis=1).tolist(),
-            "quantiles_r": np.percentile(all_rgb[2], [10, 25, 50, 75, 90]).tolist(), # Red channel
+            "quantiles_r": np.percentile(all_rgb[0], [10, 25, 50, 75, 90]).tolist(), # Red channel
             "quantiles_g": np.percentile(all_rgb[1], [10, 25, 50, 75, 90]).tolist(), # Green channel
-            "quantiles_b": np.percentile(all_rgb[0], [10, 25, 50, 75, 90]).tolist(), # Blue channel
+            "quantiles_b": np.percentile(all_rgb[2], [10, 25, 50, 75, 90]).tolist(), # Blue channel
         }
     }
 

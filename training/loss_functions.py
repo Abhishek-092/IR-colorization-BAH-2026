@@ -72,7 +72,8 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
             log_scales: (B, K, 3, H, W) - component log-scales
             targets: (B, 3, H, W) - target RGB values (normalized/rescaled to [0, 255])
         """
-        B, K, C, H, W = means.shape
+        # Clamp targets to avoid boundary issues/leakage
+        targets = torch.clamp(targets, 0.0, 255.0)
         targets = targets.unsqueeze(1) # (B, 1, 3, H, W)
         
         # Softmax mixing weights in log-space
@@ -88,25 +89,23 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
 
         # Stable CDF calculations using sigmoid function
         cdf_plus = torch.sigmoid(plus_in)
-        cdf_min = torch.sigmoid(minus_in)
 
         # Probabilities for interior and boundary bins
-        # Interior bin probability = cdf_plus - cdf_min
-        # To avoid catastrophic cancellation for small values, we use log1p/expm1 equivalents:
-        # e.g., sigmoid(x) - sigmoid(y)
-        diff_prob = cdf_plus - cdf_min
-        # Add a small epsilon to avoid log(0)
-        log_probs_interior = torch.log(torch.clamp(diff_prob, min=1e-7))
+        # To avoid catastrophic cancellation for small values, we use log1p equivalents:
+        # log(sigmoid(x) - sigmoid(y)) = -y - softplus(-x) - softplus(-y) + log1p(-exp(-1.0/scales))
+        exp_val = torch.clamp(torch.exp(-1.0 / scales), max=1.0 - 1e-7)
+        log_probs_interior = -minus_in - F.softplus(-plus_in) - F.softplus(-minus_in) + torch.log1p(-exp_val)
 
         # Handle boundary bins (x = 0 and x = 255)
         # For target = 0: cdf_plus (since we integrate from -inf to 0.5)
         # For target = 255: 1 - cdf_min (since we integrate from 254.5 to +inf)
         log_probs_left = torch.log(torch.clamp(cdf_plus, min=1e-7))
-        log_probs_right = torch.log(torch.clamp(1.0 - cdf_min, min=1e-7))
+        # 1.0 - cdf_min is computed stably as sigmoid(-minus_in)
+        log_probs_right = torch.log(torch.clamp(torch.sigmoid(-minus_in), min=1e-7))
 
         # Select probabilities based on targets
-        log_probs = torch.where(targets < 0.001, log_probs_left, 
-                                torch.where(targets > 254.999, log_probs_right, log_probs_interior))
+        log_probs = torch.where(targets < 1e-4, log_probs_left, 
+                                torch.where(targets > 255.0 - 1e-4, log_probs_right, log_probs_interior))
 
         # Sum probabilities over RGB channels
         log_probs_rgb = log_probs.sum(dim=2) # (B, K, H, W)

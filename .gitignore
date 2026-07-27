@@ -40,6 +40,7 @@ RUNBOOK.md
 .vscode/
 .idea/
 .streamlit/
+pyrightconfig.json
 
 # Formulas and Reference notes
 formulae and calculation/

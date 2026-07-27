@@ -1,48 +1,58 @@
 import os
 import glob
+import random
+import logging
+from typing import List, Dict, Any, Optional
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from utils.normalization import normalize_tir, normalize_rgb
+
+logger = logging.getLogger(__name__)
 
 class PatchDataset(Dataset):
     """
     PyTorch Dataset for loading co-registered patches.
     Strictly enforces loading of .npy files and raises an exception for any .png file requests.
     """
-    def __init__(self, patches_dir, product_ids=None, transform=None, augment=False):
+    def __init__(self, patches_dir: str, product_ids: Optional[List[str]] = None, transform: Any = None, augment: bool = False):
         super().__init__()
         self.patches_dir = patches_dir
         self.transform = transform
         self.augment = augment
-        self.samples = []
+        self.samples: List[str] = []
 
-        # Find product directories
+        # Find product directories matching exact configured ID
         if product_ids is None:
             product_dirs = [d for d in glob.glob(os.path.join(patches_dir, "*")) if os.path.isdir(d)]
         else:
-            product_dirs = [os.path.join(patches_dir, pid) for pid in product_ids if os.path.isdir(os.path.join(patches_dir, pid))]
+            product_dirs = []
+            for pid in product_ids:
+                pdir = os.path.join(patches_dir, pid)
+                if os.path.exists(pdir) and os.path.isdir(pdir):
+                    product_dirs.append(pdir)
+                else:
+                    logger.warning(f"Configured scene directory '{pid}' not found under {patches_dir}, skipping.")
 
         for pdir in product_dirs:
-            p_samples = sorted(glob.glob(os.path.join(pdir, "sample_*")))
-            self.samples.extend(p_samples)
+            p_samples = sorted(glob.glob(os.path.join(pdir, "*_patch_*")))
+            # Verify PNGs on init once per dataset build (not inside __getitem__)
+            for s_path in p_samples:
+                for fname in os.listdir(s_path):
+                    if fname.lower().endswith(".png"):
+                        raise ValueError(f"PNG images are strictly prohibited in the dataset split: {fname}")
+                self.samples.append(s_path)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx):
-        sample_path = self.samples[idx]
+    def __getitem__(self, index: Any) -> Dict[str, torch.Tensor]:
+        sample_path = self.samples[index]
+        patch_name = os.path.basename(sample_path)
 
-        # Enforce the hard rule at runtime: refuse to read PNGs
-        # (Though we list sample folders, we verify files inside aren't .png)
-        for fname in os.listdir(sample_path):
-            if fname.lower().endswith(".png"):
-                # Specifically protect against loader being fed pngs
-                pass
-
-        # Load raw numpy arrays
-        tir_200m_path = os.path.join(sample_path, "tir_200m.npy")
-        tir_100m_path = os.path.join(sample_path, "tir_100m_512.npy")
-        rgb_100m_path = os.path.join(sample_path, "rgb_100m_512.npy")
+        tir_200m_path = os.path.join(sample_path, f"{patch_name}_tir_200m.npy")
+        tir_100m_path = os.path.join(sample_path, f"{patch_name}_tir_100m.npy")
+        rgb_100m_path = os.path.join(sample_path, f"{patch_name}_rgb_100m.npy")
 
         for p in [tir_200m_path, tir_100m_path, rgb_100m_path]:
             if not p.endswith(".npy"):
@@ -55,14 +65,10 @@ class PatchDataset(Dataset):
         tir_100 = np.load(tir_100m_path).astype(np.float32)
         rgb_100 = np.load(rgb_100m_path).astype(np.float32)
 
-        # Normalize TIR (B10) to [0, 1] using min=20000.0, max=35000.0
-        TIR_MIN, TIR_MAX = 20000.0, 35000.0
-        tir_200 = np.clip((tir_200 - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
-        tir_100 = np.clip((tir_100 - TIR_MIN) / (TIR_MAX - TIR_MIN), 0.0, 1.0)
-
-        # Normalize RGB to [0, 255] using scale=10000.0
-        RGB_SCALE = 10000.0
-        rgb_100 = np.clip((rgb_100 / RGB_SCALE) * 255.0, 0.0, 255.0)
+        # Centralized normalization
+        tir_200 = normalize_tir(tir_200)
+        tir_100 = normalize_tir(tir_100)
+        rgb_100 = normalize_rgb(rgb_100)
 
         # Expand dims if single-channel to (C, H, W)
         if tir_200.ndim == 2:
@@ -70,38 +76,38 @@ class PatchDataset(Dataset):
         if tir_100.ndim == 2:
             tir_100 = np.expand_dims(tir_100, axis=0)
 
-        # Convert RGB shape from (C, H, W) or (H, W, C) to PyTorch standard (C, H, W)
+        # Convert RGB shape from (H, W, C) to PyTorch standard (C, H, W)
         if rgb_100.ndim == 3 and rgb_100.shape[0] != 3:
-            rgb_100 = np.moveaxis(rgb_100, -1, 0)
+            rgb_100 = np.ascontiguousarray(np.transpose(rgb_100, (2, 0, 1)))
 
         # PyTorch tensors
-        tir_200 = torch.from_numpy(tir_200)
-        tir_100 = torch.from_numpy(tir_100)
-        rgb_100 = torch.from_numpy(rgb_100)
+        t_tir_200 = torch.from_numpy(tir_200)
+        t_tir_100 = torch.from_numpy(tir_100)
+        t_rgb_100 = torch.from_numpy(rgb_100)
 
         # Apply random spatial augmentations if enabled (training mode)
         if self.augment:
             # Random horizontal flip
-            if np.random.rand() > 0.5:
-                tir_200 = torch.flip(tir_200, dims=[-1])
-                tir_100 = torch.flip(tir_100, dims=[-1])
-                rgb_100 = torch.flip(rgb_100, dims=[-1])
+            if random.random() > 0.5:
+                t_tir_200 = torch.flip(t_tir_200, dims=[-1])
+                t_tir_100 = torch.flip(t_tir_100, dims=[-1])
+                t_rgb_100 = torch.flip(t_rgb_100, dims=[-1])
             # Random vertical flip
-            if np.random.rand() > 0.5:
-                tir_200 = torch.flip(tir_200, dims=[-2])
-                tir_100 = torch.flip(tir_100, dims=[-2])
-                rgb_100 = torch.flip(rgb_100, dims=[-2])
+            if random.random() > 0.5:
+                t_tir_200 = torch.flip(t_tir_200, dims=[-2])
+                t_tir_100 = torch.flip(t_tir_100, dims=[-2])
+                t_rgb_100 = torch.flip(t_rgb_100, dims=[-2])
             # Random 90-degree rotation
-            rot_k = np.random.randint(0, 4)
+            rot_k = random.randint(0, 3)
             if rot_k > 0:
-                tir_200 = torch.rot90(tir_200, k=rot_k, dims=[-2, -1])
-                tir_100 = torch.rot90(tir_100, k=rot_k, dims=[-2, -1])
-                rgb_100 = torch.rot90(rgb_100, k=rot_k, dims=[-2, -1])
+                t_tir_200 = torch.rot90(t_tir_200, k=rot_k, dims=[-2, -1])
+                t_tir_100 = torch.rot90(t_tir_100, k=rot_k, dims=[-2, -1])
+                t_rgb_100 = torch.rot90(t_rgb_100, k=rot_k, dims=[-2, -1])
 
-        sample = {
-            "tir_200m": tir_200,
-            "tir_100m_512": tir_100,
-            "rgb_100m_512": rgb_100
+        sample: Dict[str, torch.Tensor] = {
+            "tir_200m": t_tir_200,
+            "tir_100m_512": t_tir_100,
+            "rgb_100m_512": t_rgb_100
         }
 
         if self.transform:
@@ -114,14 +120,14 @@ class EnforceNPYOnlyDataset(Dataset):
     A wrapper class built explicitly to refuse any paths containing '.png'.
     Raises ValueError immediately on initialization if any file contains '.png'.
     """
-    def __init__(self, file_list):
+    def __init__(self, file_list: List[str]):
         for f in file_list:
             if ".png" in f.lower():
                 raise ValueError("CRITICAL SECURITY ERROR: PNG files are strictly forbidden from training datasets.")
         self.file_list = file_list
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.file_list)
 
-    def __getitem__(self, idx):
-        return np.load(self.file_list[idx])
+    def __getitem__(self, index: Any) -> Any:
+        return np.load(self.file_list[index])

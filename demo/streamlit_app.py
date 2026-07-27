@@ -113,7 +113,7 @@ def load_sutram_pipeline(K):
     mix_head = MixtureHead(K=K)
     
     # Load from the official release checkpoint package first
-    final_path = os.path.join("checkpoints", "sutram_final.pth")
+    final_path = os.path.join(root_dir, "checkpoints", "sutram_final.pth")
     if os.path.exists(final_path):
         checkpoint = torch.load(final_path, map_location="cpu")
         backbone.load_state_dict(checkpoint["backbone_state_dict"])
@@ -121,7 +121,7 @@ def load_sutram_pipeline(K):
         mix_head.load_state_dict(checkpoint["mixture_head_state_dict"])
     else:
         # Fallback to stage-wise experiments weights if release package is missing
-        checkpoint_dir = os.path.join("experiments", "varna_baseline", "checkpoints")
+        checkpoint_dir = os.path.join(root_dir, "experiments", "sutram_baseline", "checkpoints")
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
@@ -148,7 +148,7 @@ tir_100_gt = None
 rgb_100_gt = None
 
 if mode == "📂 Patch Explorer (Pre-cropped)":
-    patch_dirs = glob.glob(os.path.join("output", "patches", "*", "sample_*"))
+    patch_dirs = glob.glob(os.path.join(root_dir, "output", "patches", "*", "sample_*"))
     if not patch_dirs:
         st.info("No patch samples found in output/patches. Please run dataset generator first.")
     else:
@@ -165,7 +165,7 @@ else:
     import rasterio
     from rasterio.enums import Resampling
     
-    raw_scene_dirs = [d for d in glob.glob(os.path.join("input", "*")) if os.path.isdir(d)]
+    raw_scene_dirs = [d for d in glob.glob(os.path.join(root_dir, "input", "*")) if os.path.isdir(d)]
     valid_scene_dirs = []
     
     # Filter only folders containing a B10 TIFF file
@@ -235,8 +235,10 @@ if tir_200 is not None:
     elif input_tensor.ndim == 3:
         input_tensor = input_tensor.unsqueeze(0)
     
+    img_max = float(tir_200.max())
+    scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
     with torch.no_grad():
-        sr_tir, decode_outs = pipeline(input_tensor)
+        sr_tir, decode_outs = pipeline(input_tensor, scale_mode=scale_mode)
         
     sr_np = sr_tir.squeeze().numpy()
     pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
@@ -245,11 +247,44 @@ if tir_200 is not None:
     entropy = decode_outs["entropy"].squeeze().numpy()
 
     # Dynamic metrics display at the top
+    import json
+    psnr_val = None
+    ssim_val = None
+    
+    # Try to load dynamic metrics from generated JSON
+    metrics_paths = [
+        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics_val.json"),
+        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics.json"),
+    ]
+    # Check if there are other metric files
+    for pattern in ["metrics_val.json", "metrics.json"]:
+        found = glob.glob(os.path.join(root_dir, "experiments", "*", pattern))
+        metrics_paths.extend(found)
+        
+    for m_path in metrics_paths:
+        if os.path.exists(m_path):
+            try:
+                with open(m_path, "r") as f:
+                    data = json.load(f)
+                    if "Overall" in data:
+                        psnr_val = data["Overall"].get("psnr")
+                        ssim_val = data["Overall"].get("ssim")
+                        break
+                    elif "psnr" in data:
+                        psnr_val = data.get("psnr")
+                        ssim_val = data.get("ssim")
+                        break
+            except Exception:
+                pass
+                
+    psnr_str = f"{psnr_val:.2f} dB" if psnr_val is not None else "Not Evaluated"
+    ssim_str = f"{ssim_val:.4f}" if ssim_val is not None else "Not Evaluated"
+
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        st.markdown('<div class="metric-card"><div class="metric-title">Validation PSNR</div><div class="metric-value">26.90 dB</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">Validation PSNR</div><div class="metric-value">{psnr_str}</div></div>', unsafe_allow_html=True)
     with col_b:
-        st.markdown('<div class="metric-card"><div class="metric-title">Validation SSIM</div><div class="metric-value">0.765</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">Validation SSIM</div><div class="metric-value">{ssim_str}</div></div>', unsafe_allow_html=True)
     with col_c:
         st.markdown('<div class="metric-card"><div class="metric-title">TIR Temp. Range</div><div class="metric-value">280K - 315K</div></div>', unsafe_allow_html=True)
     with col_d:
@@ -264,9 +299,9 @@ if tir_200 is not None:
         st.write("### Stage 1: Spatial Super-Resolution (200m → 100m)")
         col1, col2 = st.columns(2)
         with col1:
-            st.image(percentile_stretch(tir_200), caption="Input TIR (200m)", use_container_width=True)
+            st.image(percentile_stretch(tir_200), caption="Input TIR (200m)", width="stretch")
         with col2:
-            st.image(percentile_stretch(sr_np), caption="Super-Resolved TIR (100m)", use_container_width=True)
+            st.image(percentile_stretch(sr_np), caption="Super-Resolved TIR (100m)", width="stretch")
 
         st.write("---")
         st.write("### Stage 2: Color Synthesis and Reflectance Mapping")
@@ -274,20 +309,20 @@ if tir_200 is not None:
         with col3:
             # Transpose to (H,W,C) for visualization
             pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
-            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", use_container_width=True)
+            st.image(percentile_stretch(pred_rgb_viz), caption="Probabilistic Colour Mixture (100m)", width="stretch")
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
-            st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", use_container_width=True)
+            st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", width="stretch")
 
     with tab2:
         st.write("### Variational Uncertainty Decomposition")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.image(percentile_stretch(within_var), caption="Within-mode Variance (Radiometric Noise)", use_container_width=True)
+            st.image(percentile_stretch(within_var), caption="Within-mode Variance (Radiometric Noise)", width="stretch")
         with col2:
-            st.image(percentile_stretch(between_var), caption="Between-mode Variance (Material Ambiguity)", use_container_width=True)
+            st.image(percentile_stretch(between_var), caption="Between-mode Variance (Material Ambiguity)", width="stretch")
         with col3:
-            st.image(percentile_stretch(entropy), caption="Mixing Coefficient Entropy", use_container_width=True)
+            st.image(percentile_stretch(entropy), caption="Mixing Coefficient Entropy", width="stretch")
 
         st.write("---")
         st.write("### Confident-Abstention Masking")
@@ -300,7 +335,7 @@ if tir_200 is not None:
         
         col4, col5 = st.columns(2)
         with col4:
-            st.image(abstain_mask.astype(np.uint8) * 255, caption="Abstention Mask (White = Abstain / Fallback)", use_container_width=True)
+            st.image(abstain_mask.astype(np.uint8) * 255, caption="Abstention Mask (White = Abstain / Fallback)", width="stretch")
         with col5:
             # Overwrite abstained pixels with greyscale thermal
             calibrated_thermal = percentile_stretch(sr_np)
@@ -308,7 +343,7 @@ if tir_200 is not None:
             final_display = percentile_stretch(final_display)
             for c in range(3):
                 final_display[..., c] = np.where(abstain_mask, calibrated_thermal, final_display[..., c])
-            st.image(final_display, caption="Final Output with Greyscale Overlay on Abstentions", use_container_width=True)
+            st.image(final_display, caption="Final Output with Greyscale Overlay on Abstentions", width="stretch")
 
     with tab3:
         st.write("### Model Execution & Performance Profile")
