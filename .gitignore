@@ -47,8 +47,8 @@ formulae and calculation/
 
 # Runbook
 RUNBOOK.md
-qna_and_implementation_plan.md
 
-#Audits
-private_audit/
+# Audits
 reports/
+private_audit/
+qna_and_implementation_plan.md
