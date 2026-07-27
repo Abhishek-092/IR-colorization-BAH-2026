@@ -94,16 +94,6 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
         tir_200m = src.read(1, out_shape=(target_H_200, target_W_200), resampling=Resampling.average).astype(np.float32)
         
     rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0)
-
-    # Scene-level RGB normalization check to guarantee uniform scaling across all patches
-    scene_rgb_max = float(np.max(rgb_100m))
-    if scene_rgb_max > 255.0:
-        # Landsat 16-bit Surface Reflectance -> scale to [0, 255]
-        rgb_100m = np.clip((rgb_100m / 10000.0) * 255.0, 0.0, 255.0)
-    else:
-        # 8-bit visual rendered TIFFs -> clamp to [0, 255]
-        rgb_100m = np.clip(rgb_100m, 0.0, 255.0)
-
     prefix = product_name
     
     if os.path.exists(target_dir):
