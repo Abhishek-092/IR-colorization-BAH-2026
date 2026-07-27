@@ -311,9 +311,9 @@ if tir_200 is not None:
         st.write("---")
         st.write("### Confident-Abstention Masking")
         # Abstain if total variance exceeds threshold
-        total_var = within_var + between_var
-        max_v = total_var.max() if total_var.max() > 0 else 1.0
-        normalized_var = total_var / max_v
+        total_var = (within_var + between_var).mean(axis=0) if within_var.ndim == 3 else (within_var + between_var)
+        norm_var_255 = percentile_stretch(total_var)
+        normalized_var = norm_var_255.astype(np.float32) / 255.0
         
         abstain_mask = normalized_var > confidence_threshold
         
