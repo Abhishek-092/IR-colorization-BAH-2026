@@ -119,7 +119,7 @@ st.markdown("""
 # Accent bar at the top of the UI
 st.markdown('<div class="header-bar"></div>', unsafe_allow_html=True)
 
-st.title("🛰️ Project SUTRAM (Bharatiya Antriksh Hackathon 2026)")
+st.title("🛰️ Project SUTRAM ")
 st.caption("Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling")
 
 # Sidebar configurations
