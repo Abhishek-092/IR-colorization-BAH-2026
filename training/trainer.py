@@ -258,8 +258,11 @@ class UnifiedTrainer:
 
             if val_loss < best_loss:
                 best_loss = val_loss
+                bb_temp = os.path.join(self.checkpoint_dir, "backbone_stage1.pth.tmp")
                 mix_temp = os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth.tmp")
+                torch.save(self.backbone.state_dict(), bb_temp)
                 torch.save(self.mixture_head.state_dict(), mix_temp)
+                os.replace(bb_temp, os.path.join(self.checkpoint_dir, "backbone_stage1.pth"))
                 os.replace(mix_temp, os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
                 logger.info(f"New best validation color loss locked: {best_loss:.4f}")
 
@@ -298,16 +301,23 @@ class UnifiedTrainer:
             self.cfg.data.patches_dir,
             product_ids=list(self.cfg.data.splits.train),
         )
-        if not report:
+        if not report or not isinstance(report, dict):
             logger.warning("Could not build dataset report; skipping quantile mean init.")
             return
 
-        K = self.cfg.training.stage2.K
-        quantiles = np.linspace(10, 90, K)
-        
-        qr = np.array(report["rgb"].get("quantiles_r", [50.0] * K))
-        qg = np.array(report["rgb"].get("quantiles_g", [50.0] * K))
-        qb = np.array(report["rgb"].get("quantiles_b", [50.0] * K))
+        rgb_info = report.get("rgb")
+        if not isinstance(rgb_info, dict):
+            logger.warning("Dataset report missing RGB metrics; skipping quantile mean init.")
+            return
+
+        if self.mixture_head.proj.bias is None:
+            logger.warning("MixtureHead projection layer has no bias tensor; skipping quantile mean init.")
+            return
+
+        K = int(self.cfg.training.stage2.K)
+        qr = np.array(rgb_info.get("quantiles_r", [50.0] * K))
+        qg = np.array(rgb_info.get("quantiles_g", [50.0] * K))
+        qb = np.array(rgb_info.get("quantiles_b", [50.0] * K))
 
         with torch.no_grad():
             self.mixture_head.proj.bias.fill_(0.0)
