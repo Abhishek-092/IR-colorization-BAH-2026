@@ -168,12 +168,51 @@ tir_200 = None
 tir_100_gt = None
 rgb_100_gt = None
 
-import rasterio
-from rasterio.enums import Resampling
-    
+import torch.nn.functional as F
+
+HAS_RASTERIO = False
+try:
+    import rasterio
+    from rasterio.enums import Resampling
+    HAS_RASTERIO = True
+except Exception:
+    HAS_RASTERIO = False
+
+def read_tiff_array(fpath):
+    """
+    Reads raw array from a TIFF file. Uses rasterio if available,
+    or falls back to tifffile/PIL if Windows Application Control blocks rasterio DLLs.
+    """
+    if HAS_RASTERIO:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with rasterio.open(fpath) as src:
+                    return src.read(1).astype(np.float32)
+        except Exception:
+            pass
+    try:
+        import tifffile
+        arr = tifffile.imread(fpath).astype(np.float32)
+        if arr.ndim == 3:
+            arr = arr[..., 0]
+        return arr
+    except Exception:
+        pass
+    arr = np.array(Image.open(fpath)).astype(np.float32)
+    if arr.ndim == 3:
+        arr = arr[..., 0]
+    return arr
+
+def downsample_array(arr, target_h, target_w):
+    """Downsamples a 2D float32 array to (target_h, target_w) using PyTorch adaptive pool."""
+    t = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
+    out = F.adaptive_avg_pool2d(t, (target_h, target_w)).squeeze().numpy()
+    return out.astype(np.float32)
+
 raw_scene_dirs = [d for d in glob.glob(os.path.join(root_dir, "input", "*")) if os.path.isdir(d)]
 valid_scene_dirs = []
-    
+
 # Filter only folders containing a B10 TIFF file
 for d in raw_scene_dirs:
     b10s = glob.glob(os.path.join(d, "*_B10.TIF")) + glob.glob(os.path.join(d, "*_B10.tif"))
@@ -192,26 +231,25 @@ else:
         b4s = glob.glob(os.path.join(selected_scene, "*_B4.TIF")) + glob.glob(os.path.join(selected_scene, "*_B4.tif"))
         b10s = glob.glob(os.path.join(selected_scene, "*_B10.TIF")) + glob.glob(os.path.join(selected_scene, "*_B10.tif"))
             
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with rasterio.open(b10s[0]) as src:
-                h_100, w_100 = int(src.height / 3.33), int(src.width / 3.33)
-                tir_100 = src.read(1, out_shape=(h_100, w_100), resampling=Resampling.average)
-                    
-                h_200, w_200 = int(src.height / 6.67), int(src.width / 6.67)
-                tir_200_full = src.read(1, out_shape=(h_200, w_200), resampling=Resampling.average)
-                    
-            if b2s and b3s and b4s:
-                with rasterio.open(b2s[0]) as b2_src, \
-                     rasterio.open(b3s[0]) as b3_src, \
-                     rasterio.open(b4s[0]) as b4_src:
-                    h_rgb, w_rgb = int(b2_src.height / 3.33), int(b2_src.width / 3.33)
-                    b2 = b2_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
-                    b3 = b3_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
-                    b4 = b4_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
-                    rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
-            else:
-                rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
+        raw_b10 = read_tiff_array(b10s[0])
+        h_orig, w_orig = raw_b10.shape
+        h_100, w_100 = int(h_orig / 3.33), int(w_orig / 3.33)
+        h_200, w_200 = int(h_orig / 6.67), int(w_orig / 6.67)
+        
+        tir_100 = downsample_array(raw_b10, h_100, w_100)
+        tir_200_full = downsample_array(raw_b10, h_200, w_200)
+
+        if b2s and b3s and b4s:
+            raw_b2 = read_tiff_array(b2s[0])
+            raw_b3 = read_tiff_array(b3s[0])
+            raw_b4 = read_tiff_array(b4s[0])
+            
+            b2 = downsample_array(raw_b2, h_100, w_100)
+            b3 = downsample_array(raw_b3, h_100, w_100)
+            b4 = downsample_array(raw_b4, h_100, w_100)
+            rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
+        else:
+            rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
                 
         # Extract center crop
         cy_200, cx_200 = h_200 // 2, w_200 // 2
