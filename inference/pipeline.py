@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from utils.normalization import normalize_tir, denormalize_tir
+from utils.normalization import normalize_tir, denormalize_tir, denormalize_rgb
 from sutram.calibration.planck import dn_to_brightness_temp
 
 class DecodeSubmoduleFP32(nn.Module):
@@ -112,9 +112,8 @@ class SUTRAMInferencePipeline(nn.Module):
         # Denormalize outputs back to input ranges using centralized helper
         sr_tir_dn = denormalize_tir(sr_tir, scale_mode)
 
-        # Denormalize dominant and secondary colors to original 0-10000 scale
-        RGB_SCALE = 10000.0
-        decode_outputs["dominant_color"] = torch.clamp((decode_outputs["dominant_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
-        decode_outputs["secondary_color"] = torch.clamp((decode_outputs["secondary_color"] / 255.0) * RGB_SCALE, 0.0, RGB_SCALE)
+        # Denormalize dominant and secondary colors using centralized helper
+        decode_outputs["dominant_color"] = denormalize_rgb(decode_outputs["dominant_color"])
+        decode_outputs["secondary_color"] = denormalize_rgb(decode_outputs["secondary_color"])
             
         return sr_tir_dn, decode_outputs
