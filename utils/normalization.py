@@ -128,3 +128,13 @@ def normalize_rgb(arr, dtype=None):
             return torch.clamp(arr, 0.0, 255.0)
         else:
             return np.clip(arr, 0.0, 255.0)
+
+
+def denormalize_rgb(arr):
+    """
+    Centralized RGB denormalization to [0.0, 255.0].
+    Ensures internal consistency with normalize_rgb.
+    """
+    if isinstance(arr, torch.Tensor):
+        return torch.clamp(arr, 0.0, 255.0)
+    return np.clip(arr, 0.0, 255.0)
