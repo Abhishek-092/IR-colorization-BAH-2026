@@ -2,7 +2,7 @@
 
 # Stage 1: Super-Resolution
 stage1:
-  epochs: 15
+  epochs: 35
   batch_size: 16
   lr: 3e-4
   weight_decay: 1e-4
@@ -13,7 +13,7 @@ stage1:
 
 # Stage 2: Mixture Colorization
 stage2:
-  epochs: 15
+  epochs: 30
   batch_size: 16
   lr: 1e-4
   weight_decay: 1e-4
@@ -21,6 +21,8 @@ stage2:
   epsilon: 1.0 # Scale floor (1 intensity value out of 0-255)
   temp_init: 2.0 # Softmax temperature initial annealing
   temp_final: 1.0 # Softmax temperature final target
+  entropy_reg: 0.5 # Anti-collapse: load-balance weight on batch-avg mixture entropy (annealed to 0)
+  mean_anchor: 0.05 # Direct L1 supervision between mixture mean and target RGB (guards against mean drift)
 
 # Optional Stage 3: Joint Fine-tuning
 stage3:
