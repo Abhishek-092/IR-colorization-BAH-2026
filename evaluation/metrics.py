@@ -61,40 +61,53 @@ def compute_per_class_color_accuracy(pred_rgb, target_rgb, class_mask):
         class_errors[int(c)] = float(err)
     return class_errors
 
-def compute_regression_ece(pred_means, pred_scales, targets, num_bins=10):
+def compute_regression_ece(pred_means, pred_scales, targets, num_bins=10, return_curve=False):
     """
     Computes Expected Calibration Error (ECE) for regression.
     For each nominal confidence level p, computes the empirical fraction of target values
     that fall within the predicted p-probability confidence intervals.
+
+    Args:
+        return_curve: if True, also return the nominal confidence levels and the
+            measured empirical coverage at each level, so callers can plot a real
+            reliability diagram instead of a synthetic one.
+
+    Returns:
+        ece (float) when return_curve is False.
+        (ece, p_levels, empirical_coverage) when return_curve is True, where
+        p_levels and empirical_coverage are 1-D arrays of length num_bins.
     """
     # Flatten arrays
     means = pred_means.flatten()
     scales = pred_scales.flatten()
     y_true = targets.flatten()
-    
+
     ece = 0.0
     p_levels = np.linspace(0.1, 0.9, num_bins)
-    empirical_coverages = []
-    
-    for p in p_levels:
+    empirical_coverage = np.zeros(num_bins, dtype=np.float64)
+
+    for i, p in enumerate(p_levels):
         # Logistic distribution percentiles corresponding to confidence level p
         # For a logistic distribution, CDF(x) = sigmoid((x - mean) / scale)
         # The interval containing probability p is centered around the mean:
         # [sigmoid_inverse((1-p)/2), sigmoid_inverse((1+p)/2)]
         half_alpha = (1.0 - p) / 2.0
         z_p = np.log((1.0 - half_alpha) / half_alpha) # inverse sigmoid / logit
-        
+
         lower_bound = means - z_p * scales
         upper_bound = means + z_p * scales
-        
+
         # Count empirical coverage
         inside = (y_true >= lower_bound) & (y_true <= upper_bound)
-        empirical_coverage = np.mean(inside)
-        empirical_coverages.append(float(empirical_coverage))
-        
-        ece += np.abs(empirical_coverage - p)
-        
-    return float(ece / num_bins), empirical_coverages
+        cov = np.mean(inside)
+        empirical_coverage[i] = cov
+
+        ece += np.abs(cov - p)
+
+    ece = float(ece / num_bins)
+    if return_curve:
+        return ece, p_levels, empirical_coverage
+    return ece
 
 def compute_sparsification_auc(pred_errors, pred_uncertainties):
     """
