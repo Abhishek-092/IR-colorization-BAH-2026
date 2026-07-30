@@ -42,12 +42,17 @@ The model utilizes a shared **ResNet feature encoder** coupled with two task-spe
 
 ## 📈 Key Performance Results
 
-All metrics were validated on the official Landsat-9 validation scene partition:
-*   **PSNR:** **`26.90 dB`** (Highly consistent structural restoration)
-*   **SSIM (Corrected):** **`0.7652`** (True mathematical structural similarity)
-*   **Sparsification AUC:** **`0.6108`** (Optimal pixel-level uncertainty ranking)
-*   **Expected Calibration Error (ECE):** **`0.1263`** (Well-calibrated predictive probabilities)
-*   **CPU Inference Latency:** **`12.4 ms`** (Statically compiled ONNX execution graph)
+The metrics below are reference baseline figures. They are **regenerated from the
+held-out validation scenes** (disjoint from training — see `configs/data.yaml`
+`splits`) by running `python cli.py evaluate`, which writes the authoritative
+values to `experiments/<experiment_id>/metrics.json` and the diagnostic plots to
+`experiments/<experiment_id>/validation_plots/`. Re-run evaluation after training
+to reproduce these on your own weights:
+*   **PSNR:** **`26.90 dB`** (structural restoration quality)
+*   **SSIM:** **`0.7652`** (structural similarity)
+*   **Sparsification AUC:** **`0.6108`** (pixel-level uncertainty ranking)
+*   **Expected Calibration Error (ECE):** **`0.1263`** (predictive-probability calibration)
+*   **CPU Inference Latency:** **`12.4 ms`** (`python cli.py benchmark`)
 
 ---
 
