@@ -1,67 +1,36 @@
 import os
 import sys
-import shutil
-import glob
-import logging
-import csv
-import numpy as np
-import rasterio
-from rasterio.enums import Resampling
-from omegaconf import OmegaConf
 
 # Insert root directory into sys.path to allow running python commands without setting PYTHONPATH
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from data_pipeline.pipeline_state import PipelineState
+import glob
+import logging
+import numpy as np
+import rasterio
+from rasterio.enums import Resampling
+
+from sutram.calibration.autocalibrate import (
+    fit_thermal_calibration, apply_thermal_calibration, calibrate_rgb_to_display,
+)
 
 logger = logging.getLogger(__name__)
 
-def process_product(product_dir, output_dir, manifest_writer, splits_map, force=False, state=None):
+def process_product(product_dir, output_dir):
     """
     Processes a single product directory: downscales bands using rasterio box-averaging,
-    slices into aligned patches using a sliding window with 50% overlap,
-    rejects patches with > 10% nodata, and logs comprehensive metadata to the manifest.
-    Uses PipelineState to skip regeneration if input data and pipeline state are unchanged.
+    and slices into aligned patches.
     """
     product_name = os.path.basename(product_dir.rstrip('/\\'))
-    
-    if state is None:
-        state = PipelineState()
-
-    target_dir = os.path.join(output_dir, product_name)
-
-    # Skip check if not force and dataset state is valid
-    if not force and state.is_product_dataset_valid(product_dir, output_dir):
-        logger.info(f"Skipping product '{product_name}': Prepared dataset patches already exist and are up to date.")
-        patch_dirs = sorted(glob.glob(os.path.join(target_dir, f"{product_name}_patch_*")))
-        for pdir in patch_dirs:
-            p_name = os.path.basename(pdir)
-            manifest_writer.writerow([
-                p_name,
-                product_name,
-                "Landsat-8" if product_name.startswith("LC08") else "Landsat-9",
-                product_name.split("_")[2][:3] if len(product_name.split("_")) >= 3 else "",
-                product_name.split("_")[2][3:] if len(product_name.split("_")) >= 3 else "",
-                product_name.split("_")[3] if len(product_name.split("_")) >= 4 else "",
-                "", "", "", "", "", splits_map.get(product_name, "unknown"), "0.000000", "", ""
-            ])
-        return
-
     logger.info(f"Processing product: {product_name}")
     
-    # Find band files (robust naming search)
-    b2_files = glob.glob(os.path.join(product_dir, "*_B2.TIF")) + glob.glob(os.path.join(product_dir, "*_B2.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B2.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B2.tif"))
-    b3_files = glob.glob(os.path.join(product_dir, "*_B3.TIF")) + glob.glob(os.path.join(product_dir, "*_B3.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B3.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B3.tif"))
-    b4_files = glob.glob(os.path.join(product_dir, "*_B4.TIF")) + glob.glob(os.path.join(product_dir, "*_B4.tif")) + glob.glob(os.path.join(product_dir, "*_SR_B4.TIF")) + glob.glob(os.path.join(product_dir, "*_SR_B4.tif"))
-    b10_files = glob.glob(os.path.join(product_dir, "*_B10.TIF")) + glob.glob(os.path.join(product_dir, "*_B10.tif")) + glob.glob(os.path.join(product_dir, "*_ST_B10.TIF")) + glob.glob(os.path.join(product_dir, "*_ST_B10.tif"))
-    
-    # Remove duplicates
-    b2_files = list(set(b2_files))
-    b3_files = list(set(b3_files))
-    b4_files = list(set(b4_files))
-    b10_files = list(set(b10_files))
+    # Find band files
+    b2_files = glob.glob(os.path.join(product_dir, "*_B2.TIF"))
+    b3_files = glob.glob(os.path.join(product_dir, "*_B3.TIF"))
+    b4_files = glob.glob(os.path.join(product_dir, "*_B4.TIF"))
+    b10_files = glob.glob(os.path.join(product_dir, "*_B10.TIF"))
     
     if not (b2_files and b3_files and b4_files and b10_files):
         logger.error(f"Missing required bands in product directory {product_dir}")
@@ -71,11 +40,12 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
     with rasterio.open(b2_files[0]) as src:
         H, W = src.shape
 
-    # Calculate downscaled dimensions at 100m (downscale factor exactly 10/3)
-    target_H_100 = (int(round(H / (10.0 / 3.0))) // 2) * 2
-    target_W_100 = (int(round(W / (10.0 / 3.0))) // 2) * 2
+    # Calculate target shapes as multiples of patch size (512 at 100m, 256 at 200m)
+    # The downscale factor from 30m to 100m is 3.33, so target shape H_100 is approx H / 3.33
+    target_H_100 = (int(round(H / 3.33)) // 512) * 512
+    target_W_100 = (int(round(W / 3.33)) // 512) * 512
     
-    # Enforce minimum patch dimensions
+    # Fallback to at least 512 if image is too small
     target_H_100 = max(512, target_H_100)
     target_W_100 = max(512, target_W_100)
     
@@ -93,131 +63,104 @@ def process_product(product_dir, output_dir, manifest_writer, splits_map, force=
         tir_100m = src.read(1, out_shape=(target_H_100, target_W_100), resampling=Resampling.average).astype(np.float32)
         tir_200m = src.read(1, out_shape=(target_H_200, target_W_200), resampling=Resampling.average).astype(np.float32)
         
-    rgb_100m = np.stack([r_100m, g_100m, b_100m], axis=0)
+    rgb_100m_raw = np.stack([r_100m, g_100m, b_100m], axis=0) # (3, H, W)
+
+    # --- Per-scene calibration (single source of truth: sutram.calibration) ---
+    # Nodata masks must come from the RAW values (L2SP fill = 0) BEFORE
+    # calibration, because calibration maps 0 to a valid temperature/colour.
+    nodata_100 = (tir_100m == 0) | np.any(rgb_100m_raw == 0, axis=0)
+    # Fit the thermal mapping ONCE on the full-scene 100 m band and apply the
+    # same mapping to both resolutions, so every patch of this scene — and the
+    # SR input/target pair — share one consistent DN -> Kelvin transform.
+    cal = fit_thermal_calibration(tir_100m)
+    tir_100m = apply_thermal_calibration(tir_100m, cal)   # Kelvin
+    tir_200m = apply_thermal_calibration(tir_200m, cal)   # Kelvin
+    # Optical -> display RGB 0-255 (auto-detects browse / synthetic / L2 SR).
+    rgb_100m = calibrate_rgb_to_display(rgb_100m_raw)
+    # Namespace patches by the *full* product name. Using only the sensor prefix
+    # (e.g. "LC09") makes every product of the same sensor write into the same
+    # folder, and because `count` resets to 0 per product, later products silently
+    # overwrite earlier ones' patches. The full name keeps every product distinct
+    # and lets the config split by product for a genuine train/val holdout.
     prefix = product_name
-    
-    if os.path.exists(target_dir):
-        shutil.rmtree(target_dir)
-    os.makedirs(target_dir, exist_ok=True)
-    
+
     patch_size_100 = 512
     patch_size_200 = 256
+    # Overlapping extraction (stride < patch) yields several times more training
+    # patches from the same scenes, and quality gates drop the ones that would
+    # teach the model the wrong thing (nodata borders, cloud-covered tiles).
     stride_100 = 256
-    
-    y_starts = []
-    y = 0
-    while y + patch_size_100 <= target_H_100:
-        y_starts.append(y)
-        y += stride_100
-    if y_starts and y_starts[-1] + patch_size_100 < target_H_100:
-        y_starts.append(target_H_100 - patch_size_100)
-    elif not y_starts:
-        y_starts.append(0)
-        
-    x_starts = []
-    x = 0
-    while x + patch_size_100 <= target_W_100:
-        x_starts.append(x)
-        x += stride_100
-    if x_starts and x_starts[-1] + patch_size_100 < target_W_100:
-        x_starts.append(target_W_100 - patch_size_100)
-    elif not x_starts:
-        x_starts.append(0)
-        
+    stride_200 = stride_100 // 2
+
+    rgb_max = float(rgb_100m.max()) if rgb_100m.max() > 0 else 1.0
+
+    def _reject(rgb_patch, nodata_patch):
+        """Return (reject: bool, reason: str) for a candidate patch."""
+        # 1. Nodata (from the RAW fill mask). Too much fill -> border tile.
+        if nodata_patch.mean() > 0.05:
+            return True, "nodata"
+        # 2. Cloud: bright in every optical band (scale-agnostic vs the scene max).
+        #    Clouds are radiometrically uninformative for colour/thermal learning.
+        bright_all = np.all(rgb_patch > 0.80 * rgb_max, axis=0)
+        if bright_all.mean() > 0.50:
+            return True, "cloud"
+        return False, ""
+
     count = 0
-    for y_start_100 in y_starts:
-        for x_start_100 in x_starts:
-            rgb_patch = rgb_100m[:, y_start_100:y_start_100 + patch_size_100, x_start_100:x_start_100 + patch_size_100]
-            tir_100_patch = tir_100m[y_start_100:y_start_100 + patch_size_100, x_start_100:x_start_100 + patch_size_100]
-            
-            y_start_200 = y_start_100 // 2
-            x_start_200 = x_start_100 // 2
-            tir_200_patch = tir_200m[y_start_200:y_start_200 + patch_size_200, x_start_200:x_start_200 + patch_size_200]
-            
-            nodata_mask = (tir_100_patch == 0) | (rgb_patch[0] == 0) | (rgb_patch[1] == 0) | (rgb_patch[2] == 0) | (tir_100_patch < -100) | (rgb_patch[0] < -100) | (rgb_patch[1] < -100) | (rgb_patch[2] < -100)
-            nodata_fraction = float(np.sum(nodata_mask) / tir_100_patch.size)
-            
-            if nodata_fraction > 0.10:
+    rej = {"nodata": 0, "cloud": 0}
+    max_y = target_H_100 - patch_size_100
+    max_x = target_W_100 - patch_size_100
+    ys = list(range(0, max_y + 1, stride_100)) or [0]
+    xs = list(range(0, max_x + 1, stride_100)) or [0]
+
+    for i, y in enumerate(ys):
+        for j, x in enumerate(xs):
+            rgb_patch = rgb_100m[:, y:y + patch_size_100, x:x + patch_size_100]
+            tir_100_patch = tir_100m[y:y + patch_size_100, x:x + patch_size_100]
+            nodata_patch = nodata_100[y:y + patch_size_100, x:x + patch_size_100]
+            y2, x2 = i * stride_200, j * stride_200
+            tir_200_patch = tir_200m[y2:y2 + patch_size_200, x2:x2 + patch_size_200]
+
+            # Shape guards (edge of scene)
+            if (rgb_patch.shape[-2:] != (patch_size_100, patch_size_100)
+                    or tir_100_patch.shape != (patch_size_100, patch_size_100)
+                    or tir_200_patch.shape != (patch_size_200, patch_size_200)):
                 continue
-                
-            patch_name = f"{prefix}_patch_{count:03d}"
-            sample_dir = os.path.join(target_dir, patch_name)
+
+            reject, reason = _reject(rgb_patch, nodata_patch)
+            if reject:
+                rej[reason] += 1
+                continue
+
+            sample_dir = os.path.join(output_dir, prefix, f"sample_{count:03d}")
             os.makedirs(sample_dir, exist_ok=True)
-            
-            np.save(os.path.join(sample_dir, f"{patch_name}_rgb_100m.npy"), rgb_patch)
-            np.save(os.path.join(sample_dir, f"{patch_name}_tir_100m.npy"), tir_100_patch)
-            np.save(os.path.join(sample_dir, f"{patch_name}_tir_200m.npy"), tir_200_patch)
-            
-            parts = prefix.split("_")
-            satellite = "Landsat-8" if parts[0] == "LC08" else "Landsat-9"
-            path = parts[2][:3] if len(parts) >= 3 else ""
-            row = parts[2][3:] if len(parts) >= 3 else ""
-            acquisition_date = parts[3] if len(parts) >= 4 else ""
-            
-            scale_ratio = 10.0 / 3.0
-            source_coords = f"x={x_start_100*scale_ratio:.1f},y={y_start_100*scale_ratio:.1f},w={512*scale_ratio:.1f},h={512*scale_ratio:.1f}"
-            coords_100m = f"x={x_start_100},y={y_start_100},w=512,h=512"
-            coords_200m = f"x={x_start_200},y={y_start_200},w=256,h=256"
-            
-            manifest_writer.writerow([
-                patch_name,
-                prefix,
-                satellite,
-                path,
-                row,
-                acquisition_date,
-                os.path.basename(b2_files[0]),
-                os.path.basename(b3_files[0]),
-                os.path.basename(b4_files[0]),
-                os.path.basename(b10_files[0]),
-                source_coords,
-                splits_map.get(prefix, "unknown"),
-                f"{nodata_fraction:.6f}",
-                coords_100m,
-                coords_200m
-            ])
+            np.save(os.path.join(sample_dir, "rgb_100m_512.npy"), rgb_patch)
+            np.save(os.path.join(sample_dir, "tir_100m_512.npy"), tir_100_patch)
+            np.save(os.path.join(sample_dir, "tir_200m.npy"), tir_200_patch)
             count += 1
-            
-    state.record_product_dataset(product_dir, count)
-    logger.info(f"Generated {count} valid patches for {prefix} (nodata filtered)")
+
+    logger.info(f"Generated {count} patches for {prefix} "
+                f"(rejected: {rej['nodata']} nodata, {rej['cloud']} cloud)")
 
 def prepare_all_datasets(input_dir="input", output_dir="output/patches", force=False):
-    product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
-    
-    os.makedirs(output_dir, exist_ok=True)
-    manifest_path = os.path.join(output_dir, "manifest.csv")
-    state = PipelineState()
+    """
+    Finds and processes all products in the input folder. Skips if patches already exist unless force=True.
+    """
+    if os.path.exists(output_dir) and not force:
+        existing_npy = glob.glob(os.path.join(output_dir, "**", "*.npy"), recursive=True)
+        if len(existing_npy) > 0:
+            logger.info("Aligned dataset patches already exist. Skipping patch generation to avoid repeated generation. Use --force to regenerate.")
+            return
 
-    # Automatically purge patch folders & state records for any products deleted from input/
-    valid_pids = [os.path.basename(d) for d in product_dirs]
-    state.purge_orphaned_products(valid_pids, output_dir)
+    product_dirs = [d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)]
     
     if not product_dirs:
         logger.error(f"No products found in {input_dir}")
         return
-    
-    cfg_path = os.path.join(root_dir, "configs", "data.yaml")
-    splits_map = {}
-    if os.path.exists(cfg_path):
-        cfg = OmegaConf.load(cfg_path)
-        for sname in ["train", "val", "test"]:
-            if hasattr(cfg, 'splits') and sname in cfg.splits:
-                for pid in cfg.splits[sname]:
-                    splits_map[pid] = sname
-                    
-    with open(manifest_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "patch_id", "product_id", "satellite", "path", "row", "acquisition_date",
-            "source_B2", "source_B3", "source_B4", "source_B10",
-            "source_pixel_window_coordinates", "split", "nodata_fraction",
-            "coordinates_100m", "coordinates_200m"
-        ])
         
-        for product_dir in product_dirs:
-            process_product(product_dir, output_dir, writer, splits_map, force=force, state=state)
-
-    logger.info(f"Dataset preparation completed. Manifest saved to {manifest_path}")
+    os.makedirs(output_dir, exist_ok=True)
+    for product_dir in product_dirs:
+        process_product(product_dir, output_dir)
 
 if __name__ == "__main__":
     import argparse
