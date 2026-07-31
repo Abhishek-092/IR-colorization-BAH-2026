@@ -71,41 +71,49 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
             means: (B, K, 3, H, W) - component means for R, G, B
             log_scales: (B, K, 3, H, W) - component log-scales
             targets: (B, 3, H, W) - target RGB values (normalized/rescaled to [0, 255])
+
+        Gradient-safe formulation (PixelCNN++ style). The naive
+        log(clamp(cdf_plus - cdf_min, 1e-7)) zeroes the gradient whenever the
+        target sits more than a few scales from a component mean (the clamp
+        floor eats the whole expression), which makes recovery from a bad mean
+        impossible. Here the saturated regime falls back to the logistic
+        log-PDF (x bin width 1), whose gradient w.r.t. the mean never vanishes,
+        and the edge bins use exact -softplus forms instead of clamped logs.
         """
-        # Clamp targets to avoid boundary issues/leakage
-        targets = torch.clamp(targets, 0.0, 255.0)
+        B, K, C, H, W = means.shape
         targets = targets.unsqueeze(1) # (B, 1, 3, H, W)
-        
+
         # Softmax mixing weights in log-space
         log_weights = F.log_softmax(logit_weights, dim=1) # (B, K, H, W)
 
         # Enforce scale floor
         scales = F.softplus(log_scales) + self.epsilon # (B, K, 3, H, W)
+        inv_s = 1.0 / scales
+        centered = targets - means
 
-        # Calculate limits for discretized bin probabilities
-        # Targets are in range [0, 255]
-        plus_in = (targets - means + 0.5) / scales
-        minus_in = (targets - means - 0.5) / scales
+        plus_in = inv_s * (centered + 0.5)
+        minus_in = inv_s * (centered - 0.5)
 
-        # Stable CDF calculations using sigmoid function
-        cdf_plus = torch.sigmoid(plus_in)
+        # Interior bin probability and its gradient-safe fallback
+        cdf_delta = torch.sigmoid(plus_in) - torch.sigmoid(minus_in)
+        mid_in = inv_s * centered
+        # log logistic-pdf at the bin centre (+ log bin-width 1): stays informative
+        # (and differentiable w.r.t. means) even when the CDF difference underflows.
+        log_pdf_mid = mid_in - torch.log(scales) - 2.0 * F.softplus(mid_in)
+        log_probs_interior = torch.where(
+            cdf_delta > 1e-5,
+            torch.log(torch.clamp(cdf_delta, min=1e-10)),
+            log_pdf_mid,
+        )
 
-        # Probabilities for interior and boundary bins
-        # To avoid catastrophic cancellation for small values, we use log1p equivalents:
-        # log(sigmoid(x) - sigmoid(y)) = -y - softplus(-x) - softplus(-y) + log1p(-exp(-1.0/scales))
-        exp_val = torch.clamp(torch.exp(-1.0 / scales), max=1.0 - 1e-7)
-        log_probs_interior = -minus_in - F.softplus(-plus_in) - F.softplus(-minus_in) + torch.log1p(-exp_val)
-
-        # Handle boundary bins (x = 0 and x = 255)
-        # For target = 0: cdf_plus (since we integrate from -inf to 0.5)
-        # For target = 255: 1 - cdf_min (since we integrate from 254.5 to +inf)
-        log_probs_left = torch.log(torch.clamp(cdf_plus, min=1e-7))
-        # 1.0 - cdf_min is computed stably as sigmoid(-minus_in)
-        log_probs_right = torch.log(torch.clamp(torch.sigmoid(-minus_in), min=1e-7))
+        # Edge bins, numerically exact: log sigmoid(x) = x - softplus(x),
+        # log(1 - sigmoid(x)) = -softplus(x). No clamps, no dead gradients.
+        log_probs_left = plus_in - F.softplus(plus_in)   # target = 0
+        log_probs_right = -F.softplus(minus_in)          # target = 255
 
         # Select probabilities based on targets
-        log_probs = torch.where(targets < 1e-4, log_probs_left, 
-                                torch.where(targets > 255.0 - 1e-4, log_probs_right, log_probs_interior))
+        log_probs = torch.where(targets < 0.001, log_probs_left,
+                                torch.where(targets > 254.999, log_probs_right, log_probs_interior))
 
         # Sum probabilities over RGB channels
         log_probs_rgb = log_probs.sum(dim=2) # (B, K, H, W)
@@ -114,7 +122,6 @@ class DiscretizedLogisticMixtureNLLLoss(nn.Module):
         log_joint = log_weights + log_probs_rgb # (B, K, H, W)
 
         # Log-sum-exp over the K mixture components
-        # log_sum_exp(x) = max_x + log(sum(exp(x - max_x)))
         nll = -torch.logsumexp(log_joint, dim=1) # (B, H, W)
 
         return nll.mean()

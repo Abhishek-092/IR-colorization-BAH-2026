@@ -9,12 +9,12 @@ def check_alignment_in_patches(patches_dir, max_samples_to_check=5):
     """
     Checks the spatial alignment of generated patch arrays.
     Verifies that:
-    - Shape ratio: tir_100m must be exactly double the shape of tir_200m.
-    - Shape ratio: rgb_100m must be identical to tir_100m.
+    - Shape ratio: tir_100m_512 must be exactly double the shape of tir_200m.
+    - Shape ratio: rgb_100m_512 must be identical to tir_100m_512.
     - Downscaled values correspond: downsampling a patch from 100m (using box average)
       reconstructs the corresponding 200m patch.
     """
-    sample_dirs = glob.glob(os.path.join(patches_dir, "*", "*_patch_*"))
+    sample_dirs = glob.glob(os.path.join(patches_dir, "*", "sample_*"))
     if not sample_dirs:
         logger.warning(f"No patch samples found in {patches_dir} to check alignment.")
         return True
@@ -25,10 +25,9 @@ def check_alignment_in_patches(patches_dir, max_samples_to_check=5):
             break
 
         try:
-            patch_name = os.path.basename(sdir)
-            tir_200 = np.load(os.path.join(sdir, f"{patch_name}_tir_200m.npy"))
-            tir_100 = np.load(os.path.join(sdir, f"{patch_name}_tir_100m.npy"))
-            rgb_100 = np.load(os.path.join(sdir, f"{patch_name}_rgb_100m.npy"))
+            tir_200 = np.load(os.path.join(sdir, "tir_200m.npy"))
+            tir_100 = np.load(os.path.join(sdir, "tir_100m_512.npy"))
+            rgb_100 = np.load(os.path.join(sdir, "rgb_100m_512.npy"))
 
             # Shape Checks
             if tir_100.shape[-2:] != (512, 512):
@@ -44,6 +43,7 @@ def check_alignment_in_patches(patches_dir, max_samples_to_check=5):
                 return False
 
             # Consistency check: downscaling tir_100m by 2 should match tir_200m
+            # Simple box average downscale simulation
             tir_100_downscaled = tir_100.reshape(256, 2, 256, 2).mean(axis=(1, 3))
             diff = np.abs(tir_100_downscaled - tir_200).mean()
 

@@ -42,12 +42,17 @@ The model utilizes a shared **ResNet feature encoder** coupled with two task-spe
 
 ## 📈 Key Performance Results
 
-All metrics were validated on the official Landsat-9 validation scene partition:
-*   **PSNR:** **`26.90 dB`** (Highly consistent structural restoration)
-*   **SSIM (Corrected):** **`0.7652`** (True mathematical structural similarity)
-*   **Sparsification AUC:** **`0.6108`** (Optimal pixel-level uncertainty ranking)
-*   **Expected Calibration Error (ECE):** **`0.1263`** (Well-calibrated predictive probabilities)
-*   **CPU Inference Latency:** **`12.4 ms`** (Statically compiled ONNX execution graph)
+The metrics below are reference baseline figures. They are **regenerated from the
+held-out validation scenes** (disjoint from training — see `configs/data.yaml`
+`splits`) by running `python cli.py evaluate`, which writes the authoritative
+values to `experiments/<experiment_id>/metrics.json` and the diagnostic plots to
+`experiments/<experiment_id>/validation_plots/`. Re-run evaluation after training
+to reproduce these on your own weights:
+*   **PSNR:** **`26.90 dB`** (structural restoration quality)
+*   **SSIM:** **`0.7652`** (structural similarity)
+*   **Sparsification AUC:** **`0.6108`** (pixel-level uncertainty ranking)
+*   **Expected Calibration Error (ECE):** **`0.1263`** (predictive-probability calibration)
+*   **CPU Inference Latency:** **`12.4 ms`** (`python cli.py benchmark`)
 
 ---
 
@@ -103,9 +108,13 @@ python cli.py infer --weights checkpoints/sutram_final.pth --input input/LC09_L2
 
 ## 🖥️ Interactive Web UI
 
-SUTRAM includes a premium Streamlit dashboard to visually inspect inputs, outputs, and radiometric noise uncertainty maps:
+SUTRAM includes a premium, physics-informed mission control dashboard to visually inspect raw scenes, execute real model inference, compare resolutions via split handles, and inspect pixel-level brightness temperatures:
 ```bash
-streamlit run demo/streamlit_app.py
+python webapp/server.py
+```
+Then, open your web browser and navigate to:
+```
+http://127.0.0.1:8000
 ```
 
 ---
@@ -114,14 +123,15 @@ streamlit run demo/streamlit_app.py
 
 ```
 .
-├── checkpoints/             # Release weights and ONNX models
+├── checkpoints/             # Release weights, ONNX models, and manuals
 ├── configs/                 # Config YAML configurations (Hydra scheme)
 ├── data_pipeline/           # GeoTIFF coregistration and patch loader
-├── demo/                    # Streamlit web UI code
 ├── evaluation/              # Metrics calculation and report generator
 ├── experiments/             # Training logs and validation plots
 ├── inference/               # Fused inference pipelines and GeoTIFF exporters
 ├── scripts/                 # Execution runbooks and utility scripts
 ├── tests/                   # Pytest automation suite
+├── webapp/                  # High-fidelity Flask web dashboard
 └── cli.py                   # Unified CLI entrypoint
 ```
+

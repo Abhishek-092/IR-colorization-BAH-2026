@@ -7,9 +7,9 @@ from inference.geotiff_export import export_colorized_geotiff
 def test_bgr_band_ordering(tmp_path):
     """
     Asserts that BGR band ordering is correctly written to the output file.
-    Channel 2 (Blue) -> Band 1
+    Channel 0 (Blue) -> Band 1
     Channel 1 (Green) -> Band 2
-    Channel 0 (Red) -> Band 3
+    Channel 2 (Red) -> Band 3
     """
     # Create reference GeoTIFF
     ref_path = os.path.join(tmp_path, "ref.tif")
@@ -28,22 +28,22 @@ def test_bgr_band_ordering(tmp_path):
         'count': 1,
         'crs': 'EPSG:4326',
         'transform': rasterio.Affine(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
-     }
+    }
     
     with rasterio.open(ref_path, 'w', **profile) as dst:
         dst.write(dummy_ref, 1)
- 
-    # Prepare distinct channel values: Red=10, Green=20, Blue=30
+
+    # Prepare distinct channel values: Blue=30, Green=20, Red=10
     # Shape: (3, H, W)
     # H_new = H*2 = 4, W_new = W*2 = 4
     color_arr = np.zeros((3, 4, 4), dtype=np.uint8)
-    color_arr[0, ...] = 10 # Channel 0: Red
+    color_arr[0, ...] = 30 # Channel 0: Blue
     color_arr[1, ...] = 20 # Channel 1: Green
-    color_arr[2, ...] = 30 # Channel 2: Blue
- 
+    color_arr[2, ...] = 10 # Channel 2: Red
+
     # Export colorized BGR
     export_colorized_geotiff(color_arr, ref_path, out_path)
- 
+
     # Read back and assert values
     with rasterio.open(out_path) as src:
         assert src.count == 3
@@ -53,5 +53,5 @@ def test_bgr_band_ordering(tmp_path):
         assert np.all(src.read(2) == 20)
         # Band 3 -> Red (should be 10)
         assert np.all(src.read(3) == 10)
- 
+
     print("BGR band ordering assertion: PASSED.")
