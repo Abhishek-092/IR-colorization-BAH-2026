@@ -269,6 +269,16 @@ def main():
         export_sr_geotiff(sr_np, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
         export_colorized_geotiff(pred_rgb, ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
 
+        # Non colour-coded super-resolution: plain greyscale PNG (hot=bright), the
+        # raw super-resolved thermal structure without any false-colour LUT.
+        from PIL import Image
+        _a = sr_np.astype(np.float32)
+        _lo, _hi = np.percentile(_a, 1), np.percentile(_a, 99)
+        _grey = np.clip((_a - _lo) / max(_hi - _lo, 1e-6), 0, 1)
+        out_grey_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}_greyscale.png"
+        Image.fromarray((_grey * 255).astype(np.uint8), mode="L").save(out_grey_path)
+        logger.info(f"  - SR greyscale (non colour-coded): {out_grey_path}")
+
         # Bonus deliverable: fused ground reconstruction (SR detail + colour +
         # uncertainty-driven abstention in one best-estimate image).
         from inference.fusion import fuse_reconstruction
