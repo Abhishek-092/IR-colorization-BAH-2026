@@ -108,9 +108,13 @@ python cli.py infer --weights checkpoints/sutram_final.pth --input input/LC09_L2
 
 ## 🖥️ Interactive Web UI
 
-SUTRAM includes a premium Streamlit dashboard to visually inspect inputs, outputs, and radiometric noise uncertainty maps:
+SUTRAM includes a premium, physics-informed mission control dashboard to visually inspect raw scenes, execute real model inference, compare resolutions via split handles, and inspect pixel-level brightness temperatures:
 ```bash
-streamlit run demo/streamlit_app.py
+python webapp/server.py
+```
+Then, open your web browser and navigate to:
+```
+http://127.0.0.1:8000
 ```
 
 ---
@@ -119,14 +123,15 @@ streamlit run demo/streamlit_app.py
 
 ```
 .
-├── checkpoints/             # Release weights and ONNX models
+├── checkpoints/             # Release weights, ONNX models, and manuals
 ├── configs/                 # Config YAML configurations (Hydra scheme)
 ├── data_pipeline/           # GeoTIFF coregistration and patch loader
-├── demo/                    # Streamlit web UI code
 ├── evaluation/              # Metrics calculation and report generator
 ├── experiments/             # Training logs and validation plots
 ├── inference/               # Fused inference pipelines and GeoTIFF exporters
 ├── scripts/                 # Execution runbooks and utility scripts
 ├── tests/                   # Pytest automation suite
+├── webapp/                  # High-fidelity Flask web dashboard
 └── cli.py                   # Unified CLI entrypoint
 ```
+
