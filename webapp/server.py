@@ -172,32 +172,15 @@ print(f"[sutram] model loaded: {MODEL.n_params:,} params, K={MODEL.K}, "
 # ---------------------------------------------------------------------------
 # Image / data helpers
 # ---------------------------------------------------------------------------
-TURBO = None
-def _turbo_lut():
-    """A compact Turbo-like colormap LUT (256×3 uint8) for thermal rendering."""
-    global TURBO
-    if TURBO is not None:
-        return TURBO
-    stops = np.array([
-        [48, 18, 59], [70, 107, 227], [39, 187, 199],
-        [116, 221, 87], [230, 211, 58], [246, 122, 41], [122, 4, 3],
-    ], dtype=np.float32)
-    xs = np.linspace(0, 1, len(stops))
-    grid = np.linspace(0, 1, 256)
-    lut = np.stack([np.interp(grid, xs, stops[:, c]) for c in range(3)], axis=1)
-    TURBO = lut.clip(0, 255).astype(np.uint8)
-    return TURBO
-
-
-def colormap_thermal(arr):
-    """Normalize a thermal array to 0..1 and apply the Turbo LUT -> (H,W,3)."""
+def greyscale_thermal(arr):
+    """Non colour-coded super-resolution: percentile-stretch the thermal field to
+    a plain 0-255 greyscale (no LUT). This is the raw super-resolved structure —
+    hot = bright, cold = dark — the honest scientific view without false colour."""
     a = arr.astype(np.float32)
     lo, hi = np.percentile(a, 1), np.percentile(a, 99)
     if hi - lo < 1e-6:
         hi = lo + 1.0
-    idx = np.clip((a - lo) / (hi - lo), 0, 1)
-    idx = (idx * 255).astype(np.uint8)
-    return _turbo_lut()[idx]
+    return (np.clip((a - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)  # 2-D -> L PNG
 
 
 def normalize_rgb(rgb_raw):
@@ -439,12 +422,12 @@ def run_inference_payload(lr_np, meta):
     fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
                                 K=MODEL.K, confidence=res["confidence"])
 
-    # --- rendered images (data URIs) ---
-    thermal_in_img = colormap_thermal(lr256)
-    sr_img = colormap_thermal(res["sr_bt"])
+    # --- rendered images (data URIs) — all non colour-coded (greyscale) ---
+    thermal_in_img = greyscale_thermal(lr256)               # coarse input
+    sr_img = greyscale_thermal(res["sr_bt"])                # super-resolved output
     ent = res["entropy"]
     ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
-    unc_img = _turbo_lut()[(ent_norm * 255).astype(np.uint8)]
+    unc_img = (ent_norm * 255).astype(np.uint8)             # uncertainty: bright = less certain
 
     # --- per-pixel data grids for the inspector, at 256×256 to keep JSON small ---
     def to256(a):
