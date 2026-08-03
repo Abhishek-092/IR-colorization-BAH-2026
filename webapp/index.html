@@ -262,9 +262,9 @@
         <div><b>Drag &amp; drop GeoTIFF</b></div>
         <div style="margin:4px 0">or</div>
         <button class="btn" id="browseBtn" style="margin-top:2px">Browse files</button>
-        <div class="fmt"><span>GeoTIFF</span><span>TIFF</span><span>PNG</span> single-band thermal (Band 10)</div>
+        <div class="fmt">TIFF(.tif/.tiff) single-band thermal (Band 10)</div>
       </div>
-      <div style="margin-top:14px" class="eyebrow">Demo scenes — real Landsat-9 thermal tiles</div>
+      <div style="margin-top:14px" class="eyebrow">SAMPLE LANDSAT-9 THERMAL SCENES</div>
       <div class="chips" id="sceneChips"></div>
     </section>
   </div>
@@ -534,7 +534,7 @@ async function loadScenes(){
     const d=await (await fetch('/api/scenes')).json(); SCENES=d.scenes;
     const box=$('#sceneChips'); box.innerHTML='';
     SCENES.forEach(s=>{
-      const c=document.createElement('button'); c.className='chip'; c.textContent='Tile '+s.tile;
+      const c=document.createElement('button'); c.className='chip'; c.textContent=s.tile;
       c.dataset.id=s.id; c.onclick=()=>selectScene(s.id); box.appendChild(c);
     });
   }catch(e){}
@@ -577,7 +577,8 @@ async function runInference(src, previewOnly){
     renderSceneInfo(d.scene);
     await drawImg('thermalCanvas', d.images.thermal_input);
     $('#thermalReadout').classList.remove('hidden');
-    $('#thermalHint').textContent = (src.file? 'Uploaded' : 'Tile '+d.scene.tile)+' · mean '+d.temp_stats.mean+' K';
+    $('#thermalHint').textContent = (src.file? 'Uploaded' : d.scene.tile)+' · mean '+d.temp_stats.mean+' K';
+
     $('#btnRun').disabled=false; $('#runNote').textContent='Ready — press RUN SUTRAM to execute the pipeline.';
     if(!previewOnly) await revealOutputs();
   }catch(e){ toast('Request failed: '+e.message); }

@@ -320,9 +320,10 @@ def demo_scene_meta(tile):
     meta.update({
         "id": tile["id"],
         "tile": tile.get("tile", ""),
-        "display_name": f"{tile['product_id'].split('_')[2]} · Tile {tile.get('tile','')}",
+        "display_name": tile.get("tile", ""),
     })
     return meta
+
 
 
 def load_scene_array(scene_id):
