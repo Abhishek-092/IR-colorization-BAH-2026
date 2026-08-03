@@ -457,8 +457,8 @@ def run_inference_payload(lr_np, meta):
             "thermal_input": to_png_datauri(thermal_in_img),
             "super_resolution": to_png_datauri(sr_img),
             "synth_rgb": to_png_datauri(rgb_view),
-            "final_reconstruction": to_png_datauri(fused),
-            "land_cover_map": to_png_datauri(seg),
+            "reconstruction": to_png_datauri(fused),
+            "final_prediction": to_png_datauri(seg),
             "uncertainty": to_png_datauri(unc_img),
         },
         "grids": {
