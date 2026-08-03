@@ -323,13 +323,13 @@
         </div>
       </div>
       <div class="card">
-        <div class="ct">Final Predicted Output</div>
+        <div class="ct">Land Cover Map</div>
         <div class="frame"><span class="tag">Material Map</span><canvas id="finalCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
         <div class="legend" id="legend"></div>
         <div class="note">Derived from synthesized RGB + brightness temperature.</div>
       </div>
       <div class="card">
-        <div class="ct">Ground Reconstruction (Fused)</div>
+        <div class="ct">Final Reconstruction</div>
         <div class="frame"><span class="tag">All Signals</span><canvas id="reconCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
         <div style="margin-top:12px">
           <div class="meta-row"><span class="mk">Detail</span><span class="mv">SR thermal (pan-sharpen)</span></div>
@@ -338,6 +338,7 @@
         </div>
         <div class="note">Best single estimate of the ground — fuses input, SR detail, colour and uncertainty.</div>
       </div>
+
     </div>
   </section>
 
@@ -349,7 +350,7 @@
       <canvas id="cmpBase" class="base"></canvas>
       <canvas id="cmpTop" class="top-layer"></canvas>
       <div class="lbl" style="left:10px">Original Thermal</div>
-      <div class="lbl" style="right:10px">Final Prediction</div>
+      <div class="lbl" style="right:10px">Final Reconstruction</div>
       <div class="divider" id="cmpDivider"></div>
       <div class="knob" id="cmpKnob">⇆</div>
     </div>
