@@ -63,10 +63,12 @@ for pattern, want, label in SOURCES:
                            .resize((256, 256), Image.BILINEAR), dtype=np.float32)
         if tile256.max() - tile256.min() < min_contrast:
             continue
-        tid = f"SUTRAM-{label}-{NAMES[n]}"
+        sat_prefix = "L8" if prod.startswith("LC08") else "L9"
+        tile_display_name = f"{sat_prefix}-{label}-{n+1:03d}"
+        tid = f"SUTRAM-{tile_display_name}"
         np.save(os.path.join(OUT, tid + ".npy"), tile256)
         manifest.append({
-            "id": tid, "tile": NAMES[n], "product_id": prod,
+            "id": tid, "tile": tile_display_name, "product_id": prod,
             "dn_min": round(float(tile256.min()), 1),
             "dn_max": round(float(tile256.max()), 1),
         })
@@ -74,6 +76,7 @@ for pattern, want, label in SOURCES:
               f"DN {tile256.min():.0f}..{tile256.max():.0f}")
         got += 1
         n += 1
+
 
 # Remove stale tiles from previous runs, keep only the fresh manifest set.
 keep = {m["id"] + ".npy" for m in manifest} | {"manifest.json"}
