@@ -610,9 +610,9 @@ async function revealOutputs(){
   const d=RESULT;
   await drawImg('srCanvas', d.images.super_resolution);
   await drawImg('rgbCanvas', d.images.synth_rgb);
-  await drawImg('finalCanvas', d.images.final_prediction);
-  await drawImg('reconCanvas', d.images.reconstruction);
-  await drawImg('inspCanvas', d.images.final_prediction);
+  await drawImg('finalCanvas', d.images.land_cover_map);
+  await drawImg('reconCanvas', d.images.final_reconstruction);
+  await drawImg('inspCanvas', d.images.land_cover_map);
   $('#srStatus').textContent='Completed';
   renderLegend(); renderSummary(d.summary); renderMetrics(d.metrics);
   await setupCompare(); buildExplorer(); $('#btnDownload').disabled=false;
