@@ -491,12 +491,12 @@ const STAGES=[
   {name:'Uncertainty Estimation', algo:'Predictive entropy of mixture weights',
    desc:'Decomposes uncertainty (within/between mode) and computes the mixing entropy per pixel.',
    in:'synth_rgb', out:'uncertainty', frac:.14},
-  {name:'Final Predicted Output', algo:'Material map from RGB + BT',
+  {name:'Land Cover Map', algo:'Material map from RGB + BT',
    desc:'Assigns each pixel a land-cover class from the synthesized colour and brightness temperature.',
-   in:'synth_rgb', out:'final_prediction', frac:.04},
-  {name:'Ground Reconstruction (Fusion)', algo:'Pan-sharpen + confident abstention',
+   in:'synth_rgb', out:'land_cover_map', frac:.04},
+  {name:'Final Reconstruction', algo:'Pan-sharpen + confident abstention',
    desc:'Fuses everything: SR thermal detail drives luminance, mixture colour supplies hue where confident, and high-entropy pixels fall back to calibrated thermal — one best estimate of the ground.',
-   in:'synth_rgb', out:'reconstruction', frac:.02},
+   in:'synth_rgb', out:'final_reconstruction', frac:.02},
 ];
 
 function buildPipe(){
