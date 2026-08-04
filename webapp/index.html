@@ -652,7 +652,7 @@ async function setupCompare(){
   const base=$('#cmpBase'), top=$('#cmpTop'); const W=640,H=400;
   [base,top].forEach(c=>{c.width=W;c.height=H;});
   await loadInto(base.getContext('2d'), RESULT.images.thermal_input, W,H);
-  await loadInto(top.getContext('2d'), RESULT.images.reconstruction, W,H);
+  await loadInto(top.getContext('2d'), RESULT.images.final_reconstruction, W,H);
   setDivider(50);
 }
 function setDivider(pct){
