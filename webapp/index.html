@@ -695,7 +695,7 @@ $('#inspCanvas').addEventListener('click',e=>{
   $('#iplabel').innerHTML=`<span class="sw" style="background:rgb(${cls.color.join(',')})"></span>${cls.name}`;
   $('#ipconf').textContent=(conf*100).toFixed(1)+' %';
   $('#ipent').textContent=ent.toFixed(3);
-  drawImg('inspCanvas', RESULT.images.final_prediction).then(()=>{
+  drawImg('inspCanvas', RESULT.images.land_cover_map).then(()=>{
     const c=$('#inspCanvas'); const ctx=c.getContext('2d'); const s=c.width/GRIDS.size;
     ctx.strokeStyle='#37d2df'; ctx.lineWidth=2; ctx.strokeRect(x*s-5,y*s-5,10,10);
   });
