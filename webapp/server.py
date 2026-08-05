@@ -607,17 +607,17 @@ def download_geotiff():
             rgb_view = display_stretch(rgb_u8)
             fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
                                         K=MODEL.K, confidence=res["confidence"])
-            export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+            export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
         elif output_type == "synth_rgb":
             rgb_u8 = normalize_rgb(res["rgb_raw"])
             rgb_view = display_stretch(rgb_u8)
-            export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+            export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
         elif output_type == "land_cover_map":
             rgb_u8 = normalize_rgb(res["rgb_raw"])
             rgb_view = display_stretch(rgb_u8)
             bt_sr = res["sr_bt"]
             label, seg = derive_landcover(rgb_view, bt_sr)
-            export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+            export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
         elif output_type == "uncertainty":
             ent = res["entropy"]
             ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
