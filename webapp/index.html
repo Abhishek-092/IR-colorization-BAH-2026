@@ -503,14 +503,60 @@
   <!-- ===================== EXPORT ===================== -->
   <section class="panel">
     <div class="head"><h2><span class="eyebrow">12</span>Export</h2></div>
-    <div class="export-row">
-      <label class="ck"><input type="checkbox" value="super_resolution" checked>Super Resolution</label>
-      <label class="ck"><input type="checkbox" value="synth_rgb" checked>Synthesized RGB</label>
-      <label class="ck"><input type="checkbox" value="land_cover_map" checked>Land Cover Map</label>
-      <label class="ck"><input type="checkbox" value="final_reconstruction" checked>Final Reconstruction</label>
-      <label class="ck"><input type="checkbox" value="uncertainty">Uncertainty</label>
-      <label class="ck"><input type="checkbox" value="report" checked>Report (.html)</label>
-      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download</button>
+    
+    <!-- Primary Downloads -->
+    <div class="export-grid">
+      <div class="export-item">
+        <span class="export-name">Super Resolution</span>
+        <div class="format-opts">
+          <label class="ck"><input type="checkbox" id="exp_sr_png" checked> PNG</label>
+          <label class="ck"><input type="checkbox" id="exp_sr_tiff" checked> TIFF</label>
+        </div>
+      </div>
+      <div class="export-item">
+        <span class="export-name">Final Reconstruction</span>
+        <div class="format-opts">
+          <label class="ck"><input type="checkbox" id="exp_recon_png" checked> PNG</label>
+          <label class="ck"><input type="checkbox" id="exp_recon_tiff" checked> TIFF</label>
+        </div>
+      </div>
+      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download Selected</button>
+    </div>
+
+    <!-- Accordion: More Downloads -->
+    <div class="accordion" id="accContainer">
+      <button class="accordion-trigger" id="accTrigger">More Downloads... <span class="arrow-icon">▼</span></button>
+      <div class="accordion-content">
+        <div class="export-grid sub-grid">
+          <div class="export-item">
+            <span class="export-name">Synthesized RGB</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_rgb_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_rgb_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Land Cover Map</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_lcm_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_lcm_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Uncertainty</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_unc_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_unc_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Inference Report</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_report_html"> HTML</label>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
