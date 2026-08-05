@@ -200,10 +200,80 @@
   .exp .io .cap{font-family:var(--mono); font-size:10.5px; color:var(--faint); text-align:center; margin-top:5px;
     text-transform:uppercase; letter-spacing:.1em}
 
-  /* ---- Export ---- */
-  .export-row{display:flex; flex-wrap:wrap; gap:14px; align-items:center}
-  label.ck{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:13px; color:var(--muted); cursor:pointer}
-  label.ck input{accent-color:var(--cyan); width:16px; height:16px}
+  /* ---- Export Refactor ---- */
+  .export-grid {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .export-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 6px 14px;
+    border-radius: var(--r-sm);
+  }
+  .export-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .format-opts {
+    display: flex;
+    gap: 10px;
+    border-left: 1px solid var(--line-2);
+    padding-left: 10px;
+  }
+  
+  /* ---- Accordion ---- */
+  .accordion {
+    border-top: 1px solid var(--line);
+    margin-top: 14px;
+    padding-top: 10px;
+  }
+  .accordion-trigger {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 12.5px;
+    cursor: pointer;
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.15s;
+  }
+  .accordion-trigger:hover {
+    color: var(--cyan);
+  }
+  .accordion-trigger .arrow-icon {
+    font-size: 8px;
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+  .accordion.open .arrow-icon {
+    transform: rotate(180deg);
+  }
+  .accordion-content {
+    display: none;
+    padding-top: 12px;
+  }
+  .accordion.open .accordion-content {
+    display: block;
+  }
+  .sub-grid {
+    gap: 12px;
+  }
+  .sub-grid .export-item {
+    background: rgba(255,255,255,0.005);
+    border-color: var(--line-2);
+  }
+  label.ck{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; color:var(--muted); cursor:pointer}
+  label.ck input{accent-color:var(--cyan); width:15px; height:15px}
 
   .note{font-family:var(--mono); font-size:11.5px; color:var(--faint); margin-top:10px}
   .hidden{display:none !important}
