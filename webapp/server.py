@@ -512,7 +512,13 @@ def infer():
     try:
         if "file" in request.files and request.files["file"].filename:
             f = request.files["file"]
-            lr_np = read_thermal_any(f.read(), is_bytes=True)
+            file_bytes = f.read()
+            # Save it temporarily as reference
+            temp_path = os.path.join(ROOT, "output", "temp_upload.tif")
+            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            with open(temp_path, "wb") as temp_file:
+                temp_file.write(file_bytes)
+            lr_np = read_thermal_any(file_bytes, is_bytes=True)
             meta = parse_product_meta(os.path.splitext(f.filename)[0])
             meta["satellite"] = meta.get("satellite", "User Upload")
             if meta["wrs_path"] == "—":
@@ -536,6 +542,95 @@ def infer():
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+def find_scene_b10(product_id):
+    p = os.path.join(INPUT_DIR, product_id)
+    hits = (glob.glob(os.path.join(p, "*_B10.TIF")) +
+            glob.glob(os.path.join(p, "*_B10.tif")) +
+            glob.glob(os.path.join(p, "*_ST_B10.TIF")) +
+            glob.glob(os.path.join(p, "*_ST_B10.tif")))
+    if hits:
+        return hits[0]
+    any_hits = (glob.glob(os.path.join(INPUT_DIR, "*", "*_B10.TIF")) +
+                glob.glob(os.path.join(INPUT_DIR, "*", "*_B10.tif")) +
+                glob.glob(os.path.join(INPUT_DIR, "*", "*_ST_B10.TIF")) +
+                glob.glob(os.path.join(INPUT_DIR, "*", "*_ST_B10.tif")))
+    if any_hits:
+        return any_hits[0]
+    return None
+
+
+@app.post("/api/download_geotiff")
+def download_geotiff():
+    from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
+    try:
+        body = request.get_json(silent=True) or {}
+        scene_id = body.get("scene_id")
+        output_type = body.get("output_type")
+        
+        if not output_type:
+            return jsonify({"error": "output_type is required"}), 400
+            
+        if not scene_id or scene_id == "null":
+            ref_path = os.path.join(ROOT, "output", "temp_upload.tif")
+            if not os.path.exists(ref_path):
+                return jsonify({"error": "No uploaded reference file found."}), 404
+            lr_np = read_thermal_any(ref_path)
+        else:
+            tile = next((t for t in load_demo_manifest().get("tiles", [])
+                         if t["id"] == scene_id), None)
+            if not tile:
+                return jsonify({"error": f"Scene '{scene_id}' not found."}), 404
+            ref_path = find_scene_b10(tile["product_id"])
+            lr_np = load_scene_array(scene_id)
+            
+        if lr_np is None:
+            return jsonify({"error": "Failed to load input thermal array."}), 404
+            
+        if not ref_path or not os.path.exists(ref_path):
+            return jsonify({"error": "No valid reference GeoTIFF file available on server."}), 404
+
+        lr256 = resize_to(lr_np, 256) if lr_np.shape != (256, 256) else lr_np
+        lr_t = torch.from_numpy(calibrate_thermal_to_norm(lr256)).unsqueeze(0).unsqueeze(0).float()
+        res = MODEL.infer(lr_t)
+        
+        os.makedirs(os.path.join(ROOT, "output", "temp_exports"), exist_ok=True)
+        temp_out_path = os.path.join(ROOT, "output", "temp_exports", f"export_{output_type}.tif")
+        
+        if output_type == "super_resolution":
+            bt_sr = res["sr_bt"]
+            export_sr_geotiff(bt_sr, ref_path, temp_out_path)
+        elif output_type == "final_reconstruction":
+            bt_sr = res["sr_bt"]
+            rgb_u8 = normalize_rgb(res["rgb_raw"])
+            rgb_view = display_stretch(rgb_u8)
+            fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
+                                        K=MODEL.K, confidence=res["confidence"])
+            export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+        elif output_type == "synth_rgb":
+            rgb_u8 = normalize_rgb(res["rgb_raw"])
+            rgb_view = display_stretch(rgb_u8)
+            export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+        elif output_type == "land_cover_map":
+            rgb_u8 = normalize_rgb(res["rgb_raw"])
+            rgb_view = display_stretch(rgb_u8)
+            bt_sr = res["sr_bt"]
+            label, seg = derive_landcover(rgb_view, bt_sr)
+            export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.float32), ref_path, temp_out_path)
+        elif output_type == "uncertainty":
+            ent = res["entropy"]
+            ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
+            unc_img = (ent_norm * 255).astype(np.uint8)
+            export_sr_geotiff(unc_img, ref_path, temp_out_path)
+        else:
+            return jsonify({"error": f"Invalid output_type: {output_type}"}), 400
+            
+        return send_file(temp_out_path, as_attachment=True, download_name=f"{output_type}.tif")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Export failed: {e}"}), 500
 
 
 if __name__ == "__main__":
