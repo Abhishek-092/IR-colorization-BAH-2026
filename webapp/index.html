@@ -838,16 +838,76 @@ function showStage(i, box){
 
 /* =================== EXPORT =================== */
 function download(name, uri){const a=document.createElement('a'); a.href=uri; a.download=name; a.click();}
-$('#btnDownload').addEventListener('click',()=>{
-  if(!RESULT)return;
-  const checks=[...document.querySelectorAll('.export-row input:checked')].map(c=>c.value);
-  const id=RESULT.scene.tile? 'SUTRAM_'+RESULT.scene.tile : 'SUTRAM_upload';
-  checks.forEach(v=>{
-    if(v==='report'){ download(id+'_report.html', reportUri()); }
-    else if(RESULT.images[v]){ download(id+'_'+v+'.png', RESULT.images[v]); }
-  });
-  toast('Downloaded '+checks.length+' file(s)');
+
+$('#accTrigger').addEventListener('click', () => {
+  $('#accContainer').classList.toggle('open');
 });
+
+$('#btnDownload').addEventListener('click', async () => {
+  if(!RESULT) return;
+  $('#btnDownload').disabled = true;
+  const originalText = $('#btnDownload').textContent;
+  $('#btnDownload').textContent = 'Downloading...';
+  
+  const id = RESULT.scene.tile ? 'SUTRAM_' + RESULT.scene.tile : 'SUTRAM_upload';
+  const scene_id = SELECTED;
+  
+  const downloads = [
+    { id: 'exp_sr_png', type: 'super_resolution', format: 'png' },
+    { id: 'exp_sr_tiff', type: 'super_resolution', format: 'tiff' },
+    { id: 'exp_recon_png', type: 'final_reconstruction', format: 'png' },
+    { id: 'exp_recon_tiff', type: 'final_reconstruction', format: 'tiff' },
+    { id: 'exp_rgb_png', type: 'synth_rgb', format: 'png' },
+    { id: 'exp_rgb_tiff', type: 'synth_rgb', format: 'tiff' },
+    { id: 'exp_lcm_png', type: 'land_cover_map', format: 'png' },
+    { id: 'exp_lcm_tiff', type: 'land_cover_map', format: 'tiff' },
+    { id: 'exp_unc_png', type: 'uncertainty', format: 'png' },
+    { id: 'exp_unc_tiff', type: 'uncertainty', format: 'tiff' },
+    { id: 'exp_report_html', type: 'report', format: 'html' }
+  ];
+  
+  let count = 0;
+  for (const d of downloads) {
+    const el = $('#' + d.id);
+    if (el && el.checked) {
+      if (d.format === 'html') {
+        download(id + '_report.html', reportUri());
+        count++;
+      } else if (d.format === 'png') {
+        const imgUri = RESULT.images[d.type];
+        if (imgUri) {
+          download(id + '_' + d.type + '.png', imgUri);
+          count++;
+        }
+      } else if (d.format === 'tiff') {
+        try {
+          const r = await fetch('/api/download_geotiff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scene_id: scene_id, output_type: d.type })
+          });
+          if (r.ok) {
+            const blob = await r.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            download(id + '_' + d.type + '.tif', blobUrl);
+            URL.revokeObjectURL(blobUrl);
+            count++;
+          } else {
+            const err = await r.json();
+            toast('TIFF download failed: ' + (err.error || r.statusText));
+          }
+        } catch (err) {
+          toast('TIFF download error: ' + err.message);
+        }
+      }
+    }
+  }
+  
+  $('#btnDownload').disabled = false;
+  $('#btnDownload').textContent = originalText;
+  toast('Downloaded ' + count + ' file(s)');
+});
+
 function reportUri(){
   const d=RESULT, m=d.metrics, s=d.summary;
   const rows=o=>Object.entries(o).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
