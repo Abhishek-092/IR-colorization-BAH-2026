@@ -38,7 +38,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
