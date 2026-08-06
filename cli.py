@@ -247,6 +247,11 @@ def main():
         from sutram.calibration.autocalibrate import calibrate_thermal_to_norm
 
         lr_img = tifffile.imread(lr_tir_path).astype(np.float32)
+        if lr_img.ndim == 3:
+            if lr_img.shape[-1] in [3, 4]:
+                lr_img = lr_img[..., 0]
+            else:
+                lr_img = lr_img[0, ...]
         lr_norm = calibrate_thermal_to_norm(lr_img)  # radiometric calib + Planck -> normalized BT
         lr_tensor = torch.from_numpy(lr_norm)
         if lr_tensor.ndim == 2:
