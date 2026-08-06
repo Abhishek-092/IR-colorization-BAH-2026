@@ -1,25 +1,11 @@
 {
   "tiles": [
     {
-      "id": "SUTRAM-L9-146040-001",
-      "tile": "L9-146040-001",
-      "product_id": "LC09_L2SP_146040_20260712_20260713_02_T1",
-      "dn_min": 165.0,
-      "dn_max": 185.2
-    },
-    {
-      "id": "SUTRAM-L9-147046-002",
-      "tile": "L9-147046-002",
-      "product_id": "LC09_L2SP_147046_20260617_20260622_02_T1",
-      "dn_min": 180.6,
-      "dn_max": 211.9
-    },
-    {
-      "id": "SUTRAM-L8-143051-003",
-      "tile": "L8-143051-003",
-      "product_id": "LC08_L2SP_143051_20260629_20260707_02_T1",
-      "dn_min": 64.2,
-      "dn_max": 204.2
+      "id": "SUTRAM-DEMO-Alpha",
+      "tile": "Alpha",
+      "product_id": "SUTRAM_DEMO_SCENE01",
+      "dn_min": 140.5,
+      "dn_max": 210.3
     }
   ]
 }

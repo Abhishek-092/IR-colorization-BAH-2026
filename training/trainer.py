@@ -178,6 +178,16 @@ class UnifiedTrainer:
             self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
             logger.info("Loaded Stage 1 backbone weights successfully.")
 
+        # Load the trained SR head from Stage 1. Stages run as separate processes
+        # (cli train-stage1 then train-stage2), so without this the SR head would
+        # stay randomly initialized and the mixture head would be trained on SR
+        # conditioning that does NOT match what inference re-loads — a silent
+        # train/deploy mismatch. Load it here so Stage 2 sees the real SR output.
+        sr_path = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth")
+        if os.path.exists(sr_path):
+            self.sr_head.load_state_dict(torch.load(sr_path, map_location=self.device))
+            logger.info("Loaded Stage 1 SR head weights successfully.")
+
         # Freeze ALL Stage-1 weights (backbone + SR head), per the two-stage
         # design: Stage 2 trains the mixture head only. Fine-tuning the shared
         # backbone here would (a) silently invalidate the frozen SR head that

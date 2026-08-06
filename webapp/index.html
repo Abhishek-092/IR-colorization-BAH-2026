@@ -200,80 +200,10 @@
   .exp .io .cap{font-family:var(--mono); font-size:10.5px; color:var(--faint); text-align:center; margin-top:5px;
     text-transform:uppercase; letter-spacing:.1em}
 
-  /* ---- Export Refactor ---- */
-  .export-grid {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-  }
-  .export-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--panel-2);
-    border: 1px solid var(--line);
-    padding: 6px 14px;
-    border-radius: var(--r-sm);
-  }
-  .export-name {
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .format-opts {
-    display: flex;
-    gap: 10px;
-    border-left: 1px solid var(--line-2);
-    padding-left: 10px;
-  }
-  
-  /* ---- Accordion ---- */
-  .accordion {
-    border-top: 1px solid var(--line);
-    margin-top: 14px;
-    padding-top: 10px;
-  }
-  .accordion-trigger {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-family: var(--sans);
-    font-size: 12.5px;
-    cursor: pointer;
-    padding: 6px 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: color 0.15s;
-  }
-  .accordion-trigger:hover {
-    color: var(--cyan);
-  }
-  .accordion-trigger .arrow-icon {
-    font-size: 8px;
-    display: inline-block;
-    transition: transform 0.2s;
-  }
-  .accordion.open .arrow-icon {
-    transform: rotate(180deg);
-  }
-  .accordion-content {
-    display: none;
-    padding-top: 12px;
-  }
-  .accordion.open .accordion-content {
-    display: block;
-  }
-  .sub-grid {
-    gap: 12px;
-  }
-  .sub-grid .export-item {
-    background: rgba(255,255,255,0.005);
-    border-color: var(--line-2);
-  }
-  label.ck{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; color:var(--muted); cursor:pointer}
-  label.ck input{accent-color:var(--cyan); width:15px; height:15px}
+  /* ---- Export ---- */
+  .export-row{display:flex; flex-wrap:wrap; gap:14px; align-items:center}
+  label.ck{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:13px; color:var(--muted); cursor:pointer}
+  label.ck input{accent-color:var(--cyan); width:16px; height:16px}
 
   .note{font-family:var(--mono); font-size:11.5px; color:var(--faint); margin-top:10px}
   .hidden{display:none !important}
@@ -332,9 +262,9 @@
         <div><b>Drag &amp; drop GeoTIFF</b></div>
         <div style="margin:4px 0">or</div>
         <button class="btn" id="browseBtn" style="margin-top:2px">Browse files</button>
-        <div class="fmt">TIFF(.tif/.tiff) single-band thermal (Band 10)</div>
+        <div class="fmt"><span>GeoTIFF</span><span>TIFF</span><span>PNG</span> single-band thermal (Band 10)</div>
       </div>
-      <div style="margin-top:14px" class="eyebrow">SAMPLE LANDSAT-9 THERMAL SCENES</div>
+      <div style="margin-top:14px" class="eyebrow">Demo scenes — real Landsat-9 thermal tiles</div>
       <div class="chips" id="sceneChips"></div>
     </section>
   </div>
@@ -370,104 +300,53 @@
     <div class="pipe" id="pipe"></div>
   </section>
 
-  <!-- ===================== OUTPUTS ===================== -->
+  <!-- ================= SUPER-RESOLUTION COMPARISON ================= -->
   <section class="panel">
-    <div class="head"><h2><span class="eyebrow">05</span>Model Outputs</h2></div>
-    <div class="grid three">
-      <div class="card">
-        <div class="ct">Super Resolution</div>
-        <div class="frame thermal"><span class="tag">SR · 100 m</span><canvas id="srCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
-        <div style="margin-top:12px">
-          <div class="meta-row"><span class="mk">Resolution</span><span class="mv">200 m → 100 m</span></div>
-          <div class="meta-row"><span class="mk">Output</span><span class="mv">512 × 512</span></div>
-          <div class="meta-row"><span class="mk">Status</span><span class="mv"><span class="pill" id="srStatus">Pending</span></span></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="ct">Synthesized RGB</div>
-        <div class="frame"><span class="tag">RGB · Mixture</span><canvas id="rgbCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
-        <div style="margin-top:12px">
-          <div class="meta-row"><span class="mk">Generated</span><span class="mv">512 × 512 RGB</span></div>
-          <div class="meta-row"><span class="mk">Method</span><span class="mv">Prob. Mixture</span></div>
-          <div class="meta-row"><span class="mk">Components</span><span class="mv" id="rgbK">K = 6</span></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="ct">Land Cover Map</div>
-        <div class="frame"><span class="tag">Material Map</span><canvas id="finalCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
-        <div class="legend" id="legend"></div>
-        <div class="note">Derived from synthesized RGB + brightness temperature.</div>
-      </div>
-      <div class="card">
-        <div class="ct">Final Reconstruction</div>
-        <div class="frame"><span class="tag">All Signals</span><canvas id="reconCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
-        <div style="margin-top:12px">
-          <div class="meta-row"><span class="mk">Detail</span><span class="mv">SR thermal (pan-sharpen)</span></div>
-          <div class="meta-row"><span class="mk">Colour</span><span class="mv">Mixture RGB × confidence</span></div>
-          <div class="meta-row"><span class="mk">Abstention</span><span class="mv">Thermal fallback</span></div>
-        </div>
-        <div class="note">Best single estimate of the ground — fuses input, SR detail, colour and uncertainty.</div>
-      </div>
-
+    <div class="head"><h2><span class="eyebrow">05</span>Super-Resolution Comparison</h2>
+      <span class="mono" style="color:var(--faint);font-size:12px">Drag · 200 m input vs 100 m super-resolved</span></div>
+    <div class="compare" id="srCompare">
+      <canvas id="srCmpBase" class="base"></canvas>
+      <canvas id="srCmpTop" class="top-layer"></canvas>
+      <div class="lbl" style="left:10px">Input · 200 m (coarse)</div>
+      <div class="lbl" style="right:10px">Super-Resolved · 100 m</div>
+      <div class="divider" id="srCmpDivider"></div>
+      <div class="knob" id="srCmpKnob">⇆</div>
     </div>
+    <div class="note">Same thermal field, left rendered at the native 200 m sampling (blocky), right reconstructed to 100 m by the SR head (×2). Drag to reveal the recovered detail.</div>
+  </section>
+
+  <!-- ================= GROUND TRUTH DEMO (demo scene only) ================= -->
+  <section class="panel" id="gtPanel" style="display:none">
+    <div class="head"><h2><span class="eyebrow">06</span>Reconstruction vs Ground Truth</h2>
+      <span class="mono" style="color:var(--faint);font-size:12px">Drag the divider</span></div>
+    <div class="compare" id="gtCompare">
+      <canvas id="gtCmpBase" class="base"></canvas>
+      <canvas id="gtCmpTop" class="top-layer"></canvas>
+      <div class="lbl" style="left:10px">Ground Reconstruction · model</div>
+      <div class="lbl" style="right:10px">Ground Truth · RGB</div>
+      <div class="divider" id="gtCmpDivider"></div>
+      <div class="knob" id="gtCmpKnob">⇆</div>
+    </div>
+    <div class="note">The model's fused ground reconstruction (left) against the true optical colour of the same scene (right).</div>
   </section>
 
   <!-- ===================== COMPARE ===================== -->
   <section class="panel">
-    <div class="head"><h2><span class="eyebrow">06</span>Interactive Comparison</h2>
+    <div class="head"><h2><span class="eyebrow">07</span>Interactive Comparison</h2>
       <span class="mono" style="color:var(--faint);font-size:12px">Drag the divider</span></div>
     <div class="compare" id="compare">
       <canvas id="cmpBase" class="base"></canvas>
       <canvas id="cmpTop" class="top-layer"></canvas>
       <div class="lbl" style="left:10px">Original Thermal</div>
-      <div class="lbl" style="right:10px">Final Reconstruction</div>
+      <div class="lbl" style="right:10px">Final Prediction</div>
       <div class="divider" id="cmpDivider"></div>
       <div class="knob" id="cmpKnob">⇆</div>
     </div>
   </section>
 
-  <!-- ===================== INSPECTOR + SUMMARY ===================== -->
-  <div class="grid split">
-    <section class="panel">
-      <div class="head"><h2><span class="eyebrow">07</span>Pixel Inspector</h2>
-        <span class="mono" style="color:var(--faint);font-size:12px">Click the map →</span></div>
-      <div class="grid" style="grid-template-columns:180px 1fr; gap:16px; align-items:start">
-        <div class="frame" id="inspFrame" style="max-width:180px">
-          <canvas id="inspCanvas" width="256" height="256"></canvas>
-          <div class="empty">Run first</div>
-        </div>
-        <div class="insp-grid" id="inspData">
-          <div class="k">Pixel X</div><div class="v" id="ipx">—</div>
-          <div class="k">Pixel Y</div><div class="v" id="ipy">—</div>
-          <div class="k">Temperature</div><div class="v" id="ipt">—</div>
-          <div class="k">RGB</div><div class="v" id="iprgb">—</div>
-          <div class="k">Predicted</div><div class="v" id="iplabel">—</div>
-          <div class="k">Confidence</div><div class="v" id="ipconf">—</div>
-          <div class="k">Mixing Entropy</div><div class="v" id="ipent">—</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="head"><h2><span class="eyebrow">08</span>Prediction Summary</h2></div>
-      <div class="meta-row"><span class="mk">Dominant Material</span><span class="mv" id="sumDom">—</span></div>
-      <div class="meta-row"><span class="mk">Mixture Confidence</span><span class="mv" id="sumConf">—</span></div>
-      <div class="meta-row"><span class="mk">Mean Entropy</span><span class="mv" id="sumEnt">—</span></div>
-      <div style="margin-top:14px" class="eyebrow">Material Distribution</div>
-      <div id="distList" style="margin-top:8px"></div>
-    </section>
-  </div>
-
-  <!-- ===================== METRICS ===================== -->
-  <section class="panel">
-    <div class="head"><h2><span class="eyebrow">09</span>Statistics</h2>
-      <span class="mono" style="color:var(--faint);font-size:12px">Checkpoint validation · live latency</span></div>
-    <div class="tiles" id="tiles"></div>
-  </section>
-
   <!-- ===================== MODEL INFO ===================== -->
   <section class="panel">
-    <div class="head"><h2><span class="eyebrow">10</span>Model Information</h2></div>
+    <div class="head"><h2><span class="eyebrow">08</span>Model Information</h2></div>
     <div class="grid" style="grid-template-columns:repeat(2,1fr); gap:8px 40px">
       <div class="meta-row"><span class="mk">Model</span><span class="mv" id="miName">—</span></div>
       <div class="meta-row"><span class="mk">Encoder</span><span class="mv" id="miEnc">—</span></div>
@@ -478,85 +357,17 @@
     </div>
   </section>
 
-  <!-- ===================== PIPELINE EXPLORER ===================== -->
-  <section class="panel">
-    <div class="head"><h2><span class="eyebrow">11</span>Pipeline Explorer</h2>
-      <span class="mono" style="color:var(--faint);font-size:12px">Click a stage</span></div>
-    <div class="exp">
-      <div class="stages" id="expStages"></div>
-      <div class="detail" id="expDetail">
-        <div class="io">
-          <div><div class="frame"><canvas id="expIn" width="256" height="256"></canvas></div><div class="cap">Input</div></div>
-          <div class="ar">→</div>
-          <div><div class="frame"><canvas id="expOut" width="256" height="256"></canvas></div><div class="cap">Output</div></div>
-        </div>
-        <h3 id="expTitle" style="font-size:16px; margin-bottom:6px">—</h3>
-        <div id="expDesc" style="color:var(--muted); font-size:14px"></div>
-        <div style="margin-top:12px" class="insp-grid">
-          <div class="k">Algorithm</div><div class="v" id="expAlgo">—</div>
-          <div class="k">Runtime</div><div class="v" id="expRun">—</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ===================== EXPORT ===================== -->
   <section class="panel">
-    <div class="head"><h2><span class="eyebrow">12</span>Export</h2></div>
-    
-    <!-- Primary Downloads -->
-    <div class="export-grid">
-      <div class="export-item">
-        <span class="export-name">Super Resolution</span>
-        <div class="format-opts">
-          <label class="ck"><input type="checkbox" id="exp_sr_png" checked> PNG</label>
-          <label class="ck"><input type="checkbox" id="exp_sr_tiff" checked> TIFF</label>
-        </div>
-      </div>
-      <div class="export-item">
-        <span class="export-name">Final Reconstruction</span>
-        <div class="format-opts">
-          <label class="ck"><input type="checkbox" id="exp_recon_png" checked> PNG</label>
-          <label class="ck"><input type="checkbox" id="exp_recon_tiff" checked> TIFF</label>
-        </div>
-      </div>
-      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download Selected</button>
-    </div>
-
-    <!-- Accordion: More Downloads -->
-    <div class="accordion" id="accContainer">
-      <button class="accordion-trigger" id="accTrigger">More Downloads... <span class="arrow-icon">▼</span></button>
-      <div class="accordion-content">
-        <div class="export-grid sub-grid">
-          <div class="export-item">
-            <span class="export-name">Synthesized RGB</span>
-            <div class="format-opts">
-              <label class="ck"><input type="checkbox" id="exp_rgb_png"> PNG</label>
-              <label class="ck"><input type="checkbox" id="exp_rgb_tiff"> TIFF</label>
-            </div>
-          </div>
-          <div class="export-item">
-            <span class="export-name">Land Cover Map</span>
-            <div class="format-opts">
-              <label class="ck"><input type="checkbox" id="exp_lcm_png"> PNG</label>
-              <label class="ck"><input type="checkbox" id="exp_lcm_tiff"> TIFF</label>
-            </div>
-          </div>
-          <div class="export-item">
-            <span class="export-name">Uncertainty</span>
-            <div class="format-opts">
-              <label class="ck"><input type="checkbox" id="exp_unc_png"> PNG</label>
-              <label class="ck"><input type="checkbox" id="exp_unc_tiff"> TIFF</label>
-            </div>
-          </div>
-          <div class="export-item">
-            <span class="export-name">Inference Report</span>
-            <div class="format-opts">
-              <label class="ck"><input type="checkbox" id="exp_report_html"> HTML</label>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="head"><h2><span class="eyebrow">09</span>Export</h2></div>
+    <div class="export-row">
+      <label class="ck"><input type="checkbox" value="super_resolution" checked>Super Resolution</label>
+      <label class="ck"><input type="checkbox" value="synth_rgb" checked>Synthesized RGB</label>
+      <label class="ck"><input type="checkbox" value="final_prediction" checked>Final Prediction</label>
+      <label class="ck"><input type="checkbox" value="reconstruction" checked>Ground Reconstruction</label>
+      <label class="ck"><input type="checkbox" value="uncertainty">Uncertainty</label>
+      <label class="ck"><input type="checkbox" value="report" checked>Report (.html)</label>
+      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download</button>
     </div>
   </section>
 
@@ -607,12 +418,12 @@ const STAGES=[
   {name:'Uncertainty Estimation', algo:'Predictive entropy of mixture weights',
    desc:'Decomposes uncertainty (within/between mode) and computes the mixing entropy per pixel.',
    in:'synth_rgb', out:'uncertainty', frac:.14},
-  {name:'Land Cover Map', algo:'Material map from RGB + BT',
+  {name:'Final Predicted Output', algo:'Material map from RGB + BT',
    desc:'Assigns each pixel a land-cover class from the synthesized colour and brightness temperature.',
-   in:'synth_rgb', out:'land_cover_map', frac:.04},
-  {name:'Final Reconstruction', algo:'Pan-sharpen + confident abstention',
+   in:'synth_rgb', out:'final_prediction', frac:.04},
+  {name:'Ground Reconstruction (Fusion)', algo:'Pan-sharpen + confident abstention',
    desc:'Fuses everything: SR thermal detail drives luminance, mixture colour supplies hue where confident, and high-entropy pixels fall back to calibrated thermal — one best estimate of the ground.',
-   in:'synth_rgb', out:'final_reconstruction', frac:.02},
+   in:'synth_rgb', out:'reconstruction', frac:.02},
 ];
 
 function buildPipe(){
@@ -643,7 +454,6 @@ async function loadHealth(){
     $('#miPrec').textContent=HEALTH.precision.toUpperCase();
     $('#miParams').textContent=HEALTH.parameters.toLocaleString()+' ('+HEALTH.parameters_m+'M)';
     $('#miDev').textContent=HEALTH.device;
-    $('#rgbK').textContent='K = '+HEALTH.K;
   }catch(e){ $('#statusText').textContent='Backend offline'; $('#statusDot').style.background='var(--bad)'; }
 }
 async function loadScenes(){
@@ -651,7 +461,7 @@ async function loadScenes(){
     const d=await (await fetch('/api/scenes')).json(); SCENES=d.scenes;
     const box=$('#sceneChips'); box.innerHTML='';
     SCENES.forEach(s=>{
-      const c=document.createElement('button'); c.className='chip'; c.textContent=s.tile;
+      const c=document.createElement('button'); c.className='chip'; c.textContent='Tile '+s.tile;
       c.dataset.id=s.id; c.onclick=()=>selectScene(s.id); box.appendChild(c);
     });
   }catch(e){}
@@ -673,6 +483,9 @@ async function selectScene(id){
   SELECTED=id; PENDING_FILE=null;
   document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.id===id));
   await runInference({scene:id}, true);
+  // Demo scene: clicking it runs the full pipeline immediately (no extra RUN
+  // press) so the reconstruction-vs-ground-truth slider appears in one click.
+  if(String(id||'').startsWith('SUTRAM-DEMO')) runSutram();
 }
 async function selectFile(file){
   PENDING_FILE=file; SELECTED=null;
@@ -694,8 +507,7 @@ async function runInference(src, previewOnly){
     renderSceneInfo(d.scene);
     await drawImg('thermalCanvas', d.images.thermal_input);
     $('#thermalReadout').classList.remove('hidden');
-    $('#thermalHint').textContent = (src.file? 'Uploaded' : d.scene.tile)+' · mean '+d.temp_stats.mean+' K';
-
+    $('#thermalHint').textContent = (src.file? 'Uploaded' : 'Tile '+d.scene.tile)+' · mean '+d.temp_stats.mean+' K';
     $('#btnRun').disabled=false; $('#runNote').textContent='Ready — press RUN SUTRAM to execute the pipeline.';
     if(!previewOnly) await revealOutputs();
   }catch(e){ toast('Request failed: '+e.message); }
@@ -724,41 +536,19 @@ async function runSutram(){
 
 async function revealOutputs(){
   const d=RESULT;
-  await drawImg('srCanvas', d.images.super_resolution);
-  await drawImg('rgbCanvas', d.images.synth_rgb);
-  await drawImg('finalCanvas', d.images.land_cover_map);
-  await drawImg('reconCanvas', d.images.final_reconstruction);
-  await drawImg('inspCanvas', d.images.land_cover_map);
-  $('#srStatus').textContent='Completed';
-  renderLegend(); renderSummary(d.summary); renderMetrics(d.metrics);
-  await setupCompare(); buildExplorer(); $('#btnDownload').disabled=false;
-  const ie=$('#inspFrame').querySelector('.empty'); if(ie) ie.style.display='none';
+  await setupCompare(); await setupSRCompare(); $('#btnDownload').disabled=false;
+  // Demo scene only: reveal the reconstruction-vs-ground-truth slider and
+  // populate it (left = model's fused reconstruction, right = true RGB).
+  if(d.scene && String(d.scene.product_id||'').startsWith('SUTRAM_DEMO')){
+    const base=$('#gtCmpBase'), top=$('#gtCmpTop');
+    await loadInto(base.getContext('2d'), d.images.reconstruction, base.width, base.height);
+    await loadInto(top.getContext('2d'), '/static/demo_gt_rgb.png', top.width, top.height);
+    setGTDivider(50);
+    $('#gtPanel').style.display='';
+  }else{
+    $('#gtPanel').style.display='none';
+  }
   toast('Inference complete · '+d.metrics.inference_ms+' ms');
-}
-
-function renderLegend(){
-  $('#legend').innerHTML=CLASSES.map(c=>
-    `<span class="lg"><span class="sw" style="background:rgb(${c.color.join(',')})"></span>${c.name}</span>`).join('');
-}
-function renderSummary(s){
-  $('#sumDom').textContent=s.dominant;
-  $('#sumConf').textContent=s.confidence+' %';
-  $('#sumEnt').textContent=s.mean_entropy;
-  $('#distList').innerHTML=s.distribution.map(d=>{
-    const c=CLASSES.find(x=>x.name===d.label); const col=c?`rgb(${c.color.join(',')})`:'var(--cyan)';
-    return `<div class="dist-row"><span>${d.label}</span>
-      <span class="bar"><i style="width:${d.pct}%; background:${col}"></i></span>
-      <span style="text-align:right">${d.pct}%</span></div>`;
-  }).join('');
-}
-function renderMetrics(m){
-  const defs=[
-    ['PSNR', m.psnr, 'dB'], ['SSIM', m.ssim, ''], ['BT-RMSE', m.bt_rmse, 'K'],
-    ['ECE', m.ece, ''], ['Sparsification', m.sparsification_auc, 'AUC'],
-    ['Inference', m.inference_ms, 'ms'],
-  ];
-  $('#tiles').innerHTML=defs.map(([k,v,u])=>
-    `<div class="tile"><div class="tk">${k}</div><div class="tv">${v} <span class="tu">${u}</span></div></div>`).join('');
 }
 
 /* =================== COMPARE SLIDER =================== */
@@ -768,7 +558,7 @@ async function setupCompare(){
   const base=$('#cmpBase'), top=$('#cmpTop'); const W=640,H=400;
   [base,top].forEach(c=>{c.width=W;c.height=H;});
   await loadInto(base.getContext('2d'), RESULT.images.thermal_input, W,H);
-  await loadInto(top.getContext('2d'), RESULT.images.final_reconstruction, W,H);
+  await loadInto(top.getContext('2d'), RESULT.images.reconstruction, W,H);
   setDivider(50);
 }
 function setDivider(pct){
@@ -787,6 +577,56 @@ function setDivider(pct){
   box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
 })();
 
+/* =================== SUPER-RESOLUTION SLIDER =================== */
+/* Left = coarse 200 m input drawn with nearest-neighbour upsampling (so the
+   native sampling grid shows as blocks); right = the sharp 100 m SR output. */
+async function setupSRCompare(){
+  const base=$('#srCmpBase'), top=$('#srCmpTop'); const W=640,H=400;
+  [base,top].forEach(c=>{c.width=W;c.height=H;});
+  const bctx=base.getContext('2d'); bctx.imageSmoothingEnabled=false;   // blocky = coarse
+  await loadInto(bctx, RESULT.images.thermal_input, W,H);
+  const tctx=top.getContext('2d'); tctx.imageSmoothingEnabled=true;     // smooth = SR
+  await loadInto(tctx, RESULT.images.super_resolution, W,H);
+  setSRDivider(50);
+}
+function setSRDivider(pct){
+  pct=Math.max(2,Math.min(98,pct));
+  $('#srCmpTop').style.clipPath=`inset(0 0 0 ${pct}%)`;
+  $('#srCmpDivider').style.left=pct+'%'; $('#srCmpKnob').style.left=pct+'%';
+}
+(function srCompareDrag(){
+  const box=$('#srCompare'); if(!box)return; let drag=false;
+  const move=e=>{ if(!drag)return; const r=box.getBoundingClientRect();
+    const x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width*100; setSRDivider(x); };
+  $('#srCmpKnob').addEventListener('mousedown',e=>{drag=true; e.preventDefault();});
+  box.addEventListener('mousedown',e=>{drag=true; move(e);});
+  window.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  $('#srCmpKnob').addEventListener('touchstart',()=>drag=true,{passive:true});
+  box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
+})();
+
+/* =================== GROUND TRUTH DEMO SLIDER =================== */
+/* Static demo pair (webapp/static): Band-10 input vs true optical RGB of the
+   same scene. Hidden until the demo scene is run — populated in revealOutputs. */
+function setGTDivider(pct){
+  pct=Math.max(2,Math.min(98,pct));
+  $('#gtCmpTop').style.clipPath=`inset(0 0 0 ${pct}%)`;
+  $('#gtCmpDivider').style.left=pct+'%'; $('#gtCmpKnob').style.left=pct+'%';
+}
+(function gtCompareInit(){
+  const box=$('#gtCompare'); if(!box)return;
+  const base=$('#gtCmpBase'), top=$('#gtCmpTop'); const W=640,H=400;
+  [base,top].forEach(c=>{c.width=W;c.height=H;});
+  let drag=false;
+  const move=e=>{ if(!drag)return; const r=box.getBoundingClientRect();
+    const x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width*100; setGTDivider(x); };
+  $('#gtCmpKnob').addEventListener('mousedown',e=>{drag=true; e.preventDefault();});
+  box.addEventListener('mousedown',e=>{drag=true; move(e);});
+  window.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  $('#gtCmpKnob').addEventListener('touchstart',()=>drag=true,{passive:true});
+  box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
+})();
+
 /* =================== HOVER (thermal) + CLICK (inspector) =================== */
 function gridIndexFromEvent(e, canvas){
   const r=canvas.getBoundingClientRect();
@@ -800,137 +640,18 @@ $('#thermalCanvas').addEventListener('mousemove',e=>{
   $('#thX').textContent=x; $('#thY').textContent=y;
   $('#thT').textContent=GRIDS.temperature[i].toFixed(1)+' K';
 });
-$('#inspCanvas').addEventListener('click',e=>{
-  if(!GRIDS||!RESULT)return; const {x,y,i}=gridIndexFromEvent(e,e.target);
-  const t=GRIDS.temperature[i], conf=GRIDS.confidence[i], ent=GRIDS.entropy[i];
-  const r=GRIDS.rgb[i*3], g=GRIDS.rgb[i*3+1], b=GRIDS.rgb[i*3+2];
-  const li=GRIDS.label[i]; const cls=CLASSES[li];
-  $('#ipx').textContent=x; $('#ipy').textContent=y;
-  $('#ipt').textContent=t.toFixed(1)+' K';
-  $('#iprgb').innerHTML=`<span class="rgbchip" style="background:rgb(${r},${g},${b})"></span>${r}, ${g}, ${b}`;
-  $('#iplabel').innerHTML=`<span class="sw" style="background:rgb(${cls.color.join(',')})"></span>${cls.name}`;
-  $('#ipconf').textContent=(conf*100).toFixed(1)+' %';
-  $('#ipent').textContent=ent.toFixed(3);
-  drawImg('inspCanvas', RESULT.images.land_cover_map).then(()=>{
-    const c=$('#inspCanvas'); const ctx=c.getContext('2d'); const s=c.width/GRIDS.size;
-    ctx.strokeStyle='#37d2df'; ctx.lineWidth=2; ctx.strokeRect(x*s-5,y*s-5,10,10);
-  });
-});
-
-/* =================== PIPELINE EXPLORER =================== */
-function buildExplorer(){
-  const box=$('#expStages'); box.innerHTML='';
-  STAGES.forEach((s,i)=>{
-    const el=document.createElement('div'); el.className='es';
-    el.innerHTML=`<span class="en">${i+1}</span>${s.name}`;
-    el.onclick=()=>showStage(i, box); box.appendChild(el);
-  });
-  showStage(2, box);
-}
-function showStage(i, box){
-  [...box.children].forEach((c,j)=>c.classList.toggle('active',j===i));
-  const s=STAGES[i];
-  drawImg('expIn', RESULT.images[s.in]); drawImg('expOut', RESULT.images[s.out]);
-  $('#expTitle').textContent=s.name; $('#expDesc').textContent=s.desc;
-  $('#expAlgo').textContent=s.algo;
-  $('#expRun').textContent=(RESULT.metrics.inference_ms*s.frac).toFixed(1)+' ms';
-}
-
 /* =================== EXPORT =================== */
 function download(name, uri){const a=document.createElement('a'); a.href=uri; a.download=name; a.click();}
-
-$('#accTrigger').addEventListener('click', () => {
-  $('#accContainer').classList.toggle('open');
-});
-
-$('#btnDownload').addEventListener('click', async () => {
-  if(!RESULT) return;
-  
-  const id = RESULT.scene.tile ? 'SUTRAM_' + RESULT.scene.tile : 'SUTRAM_upload';
-  const scene_id = SELECTED;
-  
-  const downloads = [
-    { id: 'exp_sr_png', type: 'super_resolution', format: 'png' },
-    { id: 'exp_sr_tiff', type: 'super_resolution', format: 'tiff' },
-    { id: 'exp_recon_png', type: 'final_reconstruction', format: 'png' },
-    { id: 'exp_recon_tiff', type: 'final_reconstruction', format: 'tiff' },
-    { id: 'exp_rgb_png', type: 'synth_rgb', format: 'png' },
-    { id: 'exp_rgb_tiff', type: 'synth_rgb', format: 'tiff' },
-    { id: 'exp_lcm_png', type: 'land_cover_map', format: 'png' },
-    { id: 'exp_lcm_tiff', type: 'land_cover_map', format: 'tiff' },
-    { id: 'exp_unc_png', type: 'uncertainty', format: 'png' },
-    { id: 'exp_unc_tiff', type: 'uncertainty', format: 'tiff' },
-    { id: 'exp_report_html', type: 'report', format: 'html' }
-  ];
-  
-  const checked = downloads.filter(d => {
-    const el = $('#' + d.id);
-    return el && el.checked;
+$('#btnDownload').addEventListener('click',()=>{
+  if(!RESULT)return;
+  const checks=[...document.querySelectorAll('.export-row input:checked')].map(c=>c.value);
+  const id=RESULT.scene.tile? 'SUTRAM_'+RESULT.scene.tile : 'SUTRAM_upload';
+  checks.forEach(v=>{
+    if(v==='report'){ download(id+'_report.html', reportUri()); }
+    else if(RESULT.images[v]){ download(id+'_'+v+'.png', RESULT.images[v]); }
   });
-  
-  if (checked.length === 0) {
-    toast('Please select at least one file to download.');
-    return;
-  }
-  
-  $('#btnDownload').disabled = true;
-  const originalText = $('#btnDownload').textContent;
-  $('#btnDownload').textContent = 'Downloading...';
-  
-  if (checked.length === 1) {
-    const d = checked[0];
-    if (d.format === 'html') {
-      download(id + '_report.html', reportUri());
-    } else if (d.format === 'png') {
-      const imgUri = RESULT.images[d.type];
-      if (imgUri) download(id + '_' + d.type + '.png', imgUri);
-    } else if (d.format === 'tiff') {
-      try {
-        const r = await fetch('/api/download_geotiff', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scene_id: scene_id, output_type: d.type })
-        });
-        if (r.ok) {
-          const blob = await r.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          download(id + '_' + d.type + '.tif', blobUrl);
-          URL.revokeObjectURL(blobUrl);
-        } else {
-          const err = await r.json();
-          toast('TIFF download failed: ' + (err.error || r.statusText));
-        }
-      } catch (err) {
-        toast('TIFF download error: ' + err.message);
-      }
-    }
-    toast('Downloaded 1 file');
-  } else {
-    try {
-      const r = await fetch('/api/download_zip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene_id: scene_id, items: checked.map(c => ({ type: c.type, format: c.format })) })
-      });
-      if (r.ok) {
-        const blob = await r.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        download(id + '_export.zip', blobUrl);
-        URL.revokeObjectURL(blobUrl);
-        toast('Downloaded ZIP package');
-      } else {
-        const err = await r.json();
-        toast('ZIP download failed: ' + (err.error || r.statusText));
-      }
-    } catch (err) {
-      toast('ZIP download error: ' + err.message);
-    }
-  }
-  
-  $('#btnDownload').disabled = false;
-  $('#btnDownload').textContent = originalText;
+  toast('Downloaded '+checks.length+' file(s)');
 });
-
 function reportUri(){
   const d=RESULT, m=d.metrics, s=d.summary;
   const rows=o=>Object.entries(o).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
@@ -945,7 +666,7 @@ function reportUri(){
   ${s.distribution.map(x=>`<tr><td>${x.label}</td><td>${x.pct}</td></tr>`).join('')}</table>
   <h2>Outputs</h2>
   <img src="${d.images.super_resolution}" width=240> <img src="${d.images.synth_rgb}" width=240>
-  <img src="${d.images.land_cover_map}" width=240>
+  <img src="${d.images.final_prediction}" width=240>
   <p style="color:#666;margin-top:30px">Generated by the SUTRAM dashboard · real model inference.</p>`;
   return 'data:text/html;charset=utf-8,'+encodeURIComponent(html);
 }

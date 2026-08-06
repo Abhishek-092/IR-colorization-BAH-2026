@@ -41,10 +41,18 @@ def export_sr_geotiff(sr_array, reference_tif_path, output_path):
 def export_colorized_geotiff(color_array, reference_tif_path, output_path):
     """
     Saves a 3-channel colorized array as a georeferenced GeoTIFF.
-    Mandatory Band Ordering (BGR):
-    - Layer 1 / Band 1: Blue
-    - Layer 2 / Band 2: Green
-    - Layer 3 / Band 3: Red
+
+    INPUT is the model's RGB output — channel 0 = Red, 1 = Green, 2 = Blue
+    (the mixture head is trained on targets stacked as [B4=R, B3=G, B2=B] in
+    data_pipeline/prepare_dataset.py, so its decoded colour is RGB).
+
+    OUTPUT file uses the mandatory submission Band Ordering (BGR):
+    - Band 1: Blue   (<- input channel 2)
+    - Band 2: Green  (<- input channel 1)
+    - Band 3: Red    (<- input channel 0)
+
+    The RGB->BGR reorder happens HERE so the rest of the pipeline (training,
+    dashboard) can stay in natural RGB while the deliverable is spec-correct.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
@@ -73,11 +81,9 @@ def export_colorized_geotiff(color_array, reference_tif_path, output_path):
         })
 
     with rasterio.open(output_path, 'w', **profile) as dst:
-        # Write channel 0 (Blue) to Band 1
-        dst.write(color_array[0], 1)
-        # Write channel 1 (Green) to Band 2
-        dst.write(color_array[1], 2)
-        # Write channel 2 (Red) to Band 3
-        dst.write(color_array[2], 3)
-        
+        # Reorder RGB -> BGR on write (submission spec):
+        dst.write(color_array[2], 1)   # Blue  (input ch 2) -> Band 1
+        dst.write(color_array[1], 2)   # Green (input ch 1) -> Band 2
+        dst.write(color_array[0], 3)   # Red   (input ch 0) -> Band 3
+
     logger.info(f"Successfully saved BGR colorized GeoTIFF to {output_path}")

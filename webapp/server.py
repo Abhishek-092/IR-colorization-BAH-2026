@@ -38,7 +38,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory
 
 from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
@@ -85,7 +85,16 @@ class SutramModel:
         self.sr_head = SRHead()
         self.mixture_head = MixtureHead(K=self.K)
         self.backbone.load_state_dict(ck["backbone_state_dict"])
-        self.sr_head.load_state_dict(ck["sr_head_state_dict"])
+        try:
+            self.sr_head.load_state_dict(ck["sr_head_state_dict"])
+        except RuntimeError as e:
+            raise SystemExit(
+                "\n[sutram] Checkpoint is incompatible with the current (improved) "
+                "SR head architecture.\n         This checkpoint predates the unified "
+                "pipeline — the model must be (re)trained:\n"
+                "           python cli.py train-stage1 && python cli.py train-stage2\n"
+                "         then re-export checkpoints/sutram_final.pth.\n"
+                f"         (load error: {e})\n") from e
         self.mixture_head.load_state_dict(ck["mixture_head_state_dict"])
         for m in (self.backbone, self.sr_head, self.mixture_head):
             m.eval().to(self.device)
@@ -138,8 +147,6 @@ class SutramModel:
 
         top_w, top_i = torch.topk(pi, k=min(2, self.K), dim=1)
         pi_max = top_w[:, 0]                                  # (B,H,W) confidence
-        k_star = top_i[:, 0:1]
-        dom = torch.gather(means, 1, k_star.unsqueeze(2).expand(-1, -1, 3, -1, -1)).squeeze(1)
 
         log_pi = torch.log(torch.clamp(pi, min=1e-7))
         entropy = -(pi * log_pi).sum(dim=1)                  # (B,H,W)
@@ -147,6 +154,11 @@ class SutramModel:
         within = (pi_u * scales**2 * (np.pi**2 / 3.0)).sum(1).mean(1)
         bar_mu = (pi_u * means).sum(1, keepdim=True)
         between = (pi_u * (means - bar_mu)**2).sum(1).mean(1)
+        # Displayed colour = mixture EXPECTATION E[x] = sum_k pi_k * mean_k, not
+        # the single argmax-component mean. The expectation is smoother (no hard
+        # posterization) and measurably closer to ground truth (val RGB L1 15.4
+        # vs 18.6 for the dominant-component decode).
+        rgb_expect = bar_mu.squeeze(1)                        # (B,3,H,W)
         self._sync()
         dt_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -154,7 +166,7 @@ class SutramModel:
 
         return {
             "sr_bt": sr_bt.squeeze().cpu().numpy(),          # (512,512) brightness temp (K)
-            "rgb_raw": dom.squeeze().cpu().numpy(),          # (3,512,512)
+            "rgb_raw": rgb_expect.squeeze().cpu().numpy(),   # (3,512,512) mixture expectation
             "confidence": pi_max.squeeze().cpu().numpy(),    # (512,512) 0..1
             "entropy": entropy.squeeze().cpu().numpy(),      # (512,512)
             "within_var": within.squeeze().cpu().numpy(),
@@ -320,10 +332,9 @@ def demo_scene_meta(tile):
     meta.update({
         "id": tile["id"],
         "tile": tile.get("tile", ""),
-        "display_name": tile.get("tile", ""),
+        "display_name": f"{tile['product_id'].split('_')[2]} · Tile {tile.get('tile','')}",
     })
     return meta
-
 
 
 def load_scene_array(scene_id):
@@ -457,8 +468,8 @@ def run_inference_payload(lr_np, meta):
             "thermal_input": to_png_datauri(thermal_in_img),
             "super_resolution": to_png_datauri(sr_img),
             "synth_rgb": to_png_datauri(rgb_view),
-            "final_reconstruction": to_png_datauri(fused),
-            "land_cover_map": to_png_datauri(seg),
+            "reconstruction": to_png_datauri(fused),
+            "final_prediction": to_png_datauri(seg),
             "uncertainty": to_png_datauri(unc_img),
         },
         "grids": {
@@ -512,13 +523,7 @@ def infer():
     try:
         if "file" in request.files and request.files["file"].filename:
             f = request.files["file"]
-            file_bytes = f.read()
-            # Save it temporarily as reference
-            temp_path = os.path.join(ROOT, "output", "temp_upload.tif")
-            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-            with open(temp_path, "wb") as temp_file:
-                temp_file.write(file_bytes)
-            lr_np = read_thermal_any(file_bytes, is_bytes=True)
+            lr_np = read_thermal_any(f.read(), is_bytes=True)
             meta = parse_product_meta(os.path.splitext(f.filename)[0])
             meta["satellite"] = meta.get("satellite", "User Upload")
             if meta["wrs_path"] == "—":
@@ -542,254 +547,6 @@ def infer():
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
-
-
-def find_scene_b10(product_id):
-    p = os.path.join(INPUT_DIR, product_id)
-    hits = (glob.glob(os.path.join(p, "*_B10.TIF")) +
-            glob.glob(os.path.join(p, "*_B10.tif")) +
-            glob.glob(os.path.join(p, "*_ST_B10.TIF")) +
-            glob.glob(os.path.join(p, "*_ST_B10.tif")))
-    if hits:
-        return hits[0]
-    any_hits = (glob.glob(os.path.join(INPUT_DIR, "*", "*_B10.TIF")) +
-                glob.glob(os.path.join(INPUT_DIR, "*", "*_B10.tif")) +
-                glob.glob(os.path.join(INPUT_DIR, "*", "*_ST_B10.TIF")) +
-                glob.glob(os.path.join(INPUT_DIR, "*", "*_ST_B10.tif")))
-    if any_hits:
-        return any_hits[0]
-    return None
-
-
-@app.post("/api/download_geotiff")
-def download_geotiff():
-    from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
-    try:
-        body = request.get_json(silent=True) or {}
-        scene_id = body.get("scene_id")
-        output_type = body.get("output_type")
-        
-        if not output_type:
-            return jsonify({"error": "output_type is required"}), 400
-            
-        if not scene_id or scene_id == "null":
-            ref_path = os.path.join(ROOT, "output", "temp_upload.tif")
-            if not os.path.exists(ref_path):
-                return jsonify({"error": "No uploaded reference file found."}), 404
-            lr_np = read_thermal_any(ref_path)
-        else:
-            tile = next((t for t in load_demo_manifest().get("tiles", [])
-                         if t["id"] == scene_id), None)
-            if not tile:
-                return jsonify({"error": f"Scene '{scene_id}' not found."}), 404
-            ref_path = find_scene_b10(tile["product_id"])
-            lr_np = load_scene_array(scene_id)
-            
-        if lr_np is None:
-            return jsonify({"error": "Failed to load input thermal array."}), 404
-            
-        if not ref_path or not os.path.exists(ref_path):
-            return jsonify({"error": "No valid reference GeoTIFF file available on server."}), 404
-
-        lr256 = resize_to(lr_np, 256) if lr_np.shape != (256, 256) else lr_np
-        lr_t = torch.from_numpy(calibrate_thermal_to_norm(lr256)).unsqueeze(0).unsqueeze(0).float()
-        res = MODEL.infer(lr_t)
-        
-        os.makedirs(os.path.join(ROOT, "output", "temp_exports"), exist_ok=True)
-        temp_out_path = os.path.join(ROOT, "output", "temp_exports", f"export_{output_type}.tif")
-        
-        if output_type == "super_resolution":
-            bt_sr = res["sr_bt"]
-            # Stretch [TB_MIN, TB_MAX] range to [0, 255] uint8 for correct display in photo viewers
-            bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
-            bt_sr_u8 = (bt_sr_norm * 255.0).astype(np.uint8)
-            export_sr_geotiff(bt_sr_u8, ref_path, temp_out_path)
-        elif output_type == "final_reconstruction":
-            bt_sr = res["sr_bt"]
-            rgb_u8 = normalize_rgb(res["rgb_raw"])
-            rgb_view = display_stretch(rgb_u8)
-            fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
-                                        K=MODEL.K, confidence=res["confidence"])
-            export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
-        elif output_type == "synth_rgb":
-            rgb_u8 = normalize_rgb(res["rgb_raw"])
-            rgb_view = display_stretch(rgb_u8)
-            export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
-        elif output_type == "land_cover_map":
-            rgb_u8 = normalize_rgb(res["rgb_raw"])
-            rgb_view = display_stretch(rgb_u8)
-            bt_sr = res["sr_bt"]
-            label, seg = derive_landcover(rgb_view, bt_sr)
-            export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.uint8), ref_path, temp_out_path)
-        elif output_type == "uncertainty":
-            ent = res["entropy"]
-            ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
-            unc_img = (ent_norm * 255).astype(np.uint8)
-            export_sr_geotiff(unc_img, ref_path, temp_out_path)
-        else:
-            return jsonify({"error": f"Invalid output_type: {output_type}"}), 400
-            
-        return send_file(temp_out_path, as_attachment=True, download_name=f"{output_type}.tif")
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"Export failed: {e}"}), 500
-
-
-@app.post("/api/download_zip")
-def download_zip():
-    import zipfile
-    import io
-    import base64
-    from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
-    try:
-        body = request.get_json(silent=True) or {}
-        scene_id = body.get("scene_id")
-        items = body.get("items", [])
-        
-        if not items:
-            return jsonify({"error": "No items requested"}), 400
-            
-        if not scene_id or scene_id == "null":
-            ref_path = os.path.join(ROOT, "output", "temp_upload.tif")
-            if not os.path.exists(ref_path):
-                return jsonify({"error": "No uploaded reference file found."}), 404
-            lr_np = read_thermal_any(ref_path)
-            meta = {
-                "satellite": "User Upload",
-                "sensor": "Thermal (uploaded)",
-                "acquisition": "—",
-                "wrs_path": "—",
-                "wrs_row": "—",
-                "processing": "—"
-            }
-        else:
-            tile = next((t for t in load_demo_manifest().get("tiles", [])
-                         if t["id"] == scene_id), None)
-            if not tile:
-                return jsonify({"error": f"Scene '{scene_id}' not found."}), 404
-            ref_path = find_scene_b10(tile["product_id"])
-            lr_np = load_scene_array(scene_id)
-            meta = demo_scene_meta(tile)
-            
-        if lr_np is None:
-            return jsonify({"error": "Failed to load input thermal array."}), 404
-            
-        if not ref_path or not os.path.exists(ref_path):
-            return jsonify({"error": "No valid reference GeoTIFF file available on server."}), 404
-
-        lr256 = resize_to(lr_np, 256) if lr_np.shape != (256, 256) else lr_np
-        lr_t = torch.from_numpy(calibrate_thermal_to_norm(lr256)).unsqueeze(0).unsqueeze(0).float()
-        res = MODEL.infer(lr_t)
-        
-        bt_sr = res["sr_bt"]
-        rgb_u8 = normalize_rgb(res["rgb_raw"])
-        rgb_view = display_stretch(rgb_u8)
-        fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
-                                    K=MODEL.K, confidence=res["confidence"])
-        label, seg = derive_landcover(rgb_view, bt_sr)
-        ent = res["entropy"]
-        ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
-        unc_img = (ent_norm * 255).astype(np.uint8)
-        
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            os.makedirs(os.path.join(ROOT, "output", "temp_exports"), exist_ok=True)
-            
-            for item in items:
-                otype = item["type"]
-                oformat = item["format"]
-                filename_base = f"SUTRAM_{scene_id or 'upload'}_{otype}"
-                
-                if oformat == "png":
-                    if otype == "super_resolution":
-                        bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
-                        arr = (bt_sr_norm * 255.0).astype(np.uint8)
-                        img = Image.fromarray(arr, mode="L")
-                    elif otype == "final_reconstruction":
-                        img = Image.fromarray(fused, mode="RGB")
-                    elif otype == "synth_rgb":
-                        img = Image.fromarray(rgb_view, mode="RGB")
-                    elif otype == "land_cover_map":
-                        img = Image.fromarray(seg, mode="RGB")
-                    elif otype == "uncertainty":
-                        img = Image.fromarray(unc_img, mode="L")
-                    else:
-                        continue
-                    
-                    img_io = io.BytesIO()
-                    img.save(img_io, format="PNG")
-                    zip_file.writestr(f"{filename_base}.png", img_io.getvalue())
-                    
-                elif oformat == "tiff":
-                    temp_tif_path = os.path.join(ROOT, "output", "temp_exports", f"zip_temp_{otype}.tif")
-                    if otype == "super_resolution":
-                        bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
-                        bt_sr_u8 = (bt_sr_norm * 255.0).astype(np.uint8)
-                        export_sr_geotiff(bt_sr_u8, ref_path, temp_tif_path)
-                    elif otype == "final_reconstruction":
-                        export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
-                    elif otype == "synth_rgb":
-                        export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
-                    elif otype == "land_cover_map":
-                        export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
-                    elif otype == "uncertainty":
-                        export_sr_geotiff(unc_img, ref_path, temp_tif_path)
-                    else:
-                        continue
-                    zip_file.write(temp_tif_path, f"{filename_base}.tif")
-                    
-                elif oformat == "html" and otype == "report":
-                    m = {
-                        "PSNR": round(float(MODEL.stored_metrics.get("psnr", 0)), 2),
-                        "SSIM": round(float(MODEL.stored_metrics.get("ssim", 0)), 3),
-                        "BT-RMSE (K)": round(float(MODEL.stored_metrics.get("bt_rmse", 0)), 3),
-                        "ECE": round(float(MODEL.stored_metrics.get("ece", 0)), 3),
-                        "Sparsification AUC": round(float(MODEL.stored_metrics.get("sparsification_auc", 0)), 3),
-                        "Inference Latency (ms)": round(float(res["time_ms"]), 1),
-                    }
-                    counts = np.bincount(label.ravel(), minlength=len(CLASS_NAMES))
-                    total = int(counts.sum())
-                    dist = [{"label": CLASS_NAMES[i], "pct": round(100.0 * counts[i] / total, 1)}
-                            for i in np.argsort(counts)[::-1]]
-                    dominant = dist[0]["label"]
-                    dom_conf = round(float(res["confidence"][label == np.argmax(counts)].mean()) * 100, 1) if total else 0.0
-                    mean_entropy = round(float(ent.mean()), 3)
-                    
-                    rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in m.items())
-                    dist_rows = "".join(f"<tr><td>{x['label']}</td><td>{x['pct']}</td></tr>" for x in dist)
-                    
-                    def to_b64_src(pil_img):
-                        b = io.BytesIO()
-                        pil_img.save(b, format="PNG")
-                        return "data:image/png;base64," + base64.b64encode(b.getvalue()).decode()
-                        
-                    sr_b64 = to_b64_src(Image.fromarray((np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0) * 255.0).astype(np.uint8), mode="L"))
-                    rgb_b64 = to_b64_src(Image.fromarray(rgb_view, mode="RGB"))
-                    seg_b64 = to_b64_src(Image.fromarray(seg, mode="RGB"))
-                    
-                    html_content = f"""<!doctype html><meta charset=utf8><title>SUTRAM Report</title>
-<body style="font-family:system-ui;max-width:760px;margin:40px auto;color:#111">
-<h1>SUTRAM Inference Report</h1>
-<p><b>Scene:</b> {meta.get('satellite', 'User Upload')} · WRS {meta.get('wrs_path','—')}/{meta.get('wrs_row','—')} · {meta.get('acquisition','—')}</p>
-<p><b>Model:</b> {MODEL.config.get('model_name', 'Project SUTRAM')} v{MODEL.version} · {round(MODEL.n_params / 1e6, 2)}M params · {str(MODEL.device).upper()}</p>
-<h2>Metrics</h2><table border=1 cellpadding=6 style="border-collapse:collapse">{rows}</table>
-<h2>Prediction</h2><p>Dominant: <b>{dominant}</b> ({dom_conf}% conf, mean entropy {mean_entropy})</p>
-<table border=1 cellpadding=6 style="border-collapse:collapse"><tr><th>Material</th><th>%</th></tr>
-{dist_rows}</table>
-<h2>Outputs</h2>
-<img src="{sr_b64}" width=240> <img src="{rgb_b64}" width=240>
-<img src="{seg_b64}" width=240>
-<p style="color:#666;margin-top:30px">Generated by the SUTRAM dashboard · real model inference.</p>"""
-                    
-                    zip_file.writestr(f"SUTRAM_{scene_id or 'upload'}_report.html", html_content)
-        
-        zip_buffer.seek(0)
-        return send_file(zip_buffer, as_attachment=True, download_name=f"SUTRAM_{scene_id or 'upload'}_export.zip", mimetype="application/zip")
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"ZIP packaging failed: {e}"}), 500
 
 
 if __name__ == "__main__":

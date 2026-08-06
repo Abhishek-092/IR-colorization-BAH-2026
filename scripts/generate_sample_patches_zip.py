@@ -62,7 +62,7 @@ def main():
         sr_np = sr_tir.squeeze().numpy()
         pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
         
-        # Transpose BGR to RGB for plotting
+        # Model colour is RGB (ch0=Red); move channel axis last for plotting.
         pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
         
         # Apply percentile stretches
