@@ -200,10 +200,80 @@
   .exp .io .cap{font-family:var(--mono); font-size:10.5px; color:var(--faint); text-align:center; margin-top:5px;
     text-transform:uppercase; letter-spacing:.1em}
 
-  /* ---- Export ---- */
-  .export-row{display:flex; flex-wrap:wrap; gap:14px; align-items:center}
-  label.ck{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:13px; color:var(--muted); cursor:pointer}
-  label.ck input{accent-color:var(--cyan); width:16px; height:16px}
+  /* ---- Export Refactor ---- */
+  .export-grid {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .export-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 6px 14px;
+    border-radius: var(--r-sm);
+  }
+  .export-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .format-opts {
+    display: flex;
+    gap: 10px;
+    border-left: 1px solid var(--line-2);
+    padding-left: 10px;
+  }
+  
+  /* ---- Accordion ---- */
+  .accordion {
+    border-top: 1px solid var(--line);
+    margin-top: 14px;
+    padding-top: 10px;
+  }
+  .accordion-trigger {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 12.5px;
+    cursor: pointer;
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.15s;
+  }
+  .accordion-trigger:hover {
+    color: var(--cyan);
+  }
+  .accordion-trigger .arrow-icon {
+    font-size: 8px;
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+  .accordion.open .arrow-icon {
+    transform: rotate(180deg);
+  }
+  .accordion-content {
+    display: none;
+    padding-top: 12px;
+  }
+  .accordion.open .accordion-content {
+    display: block;
+  }
+  .sub-grid {
+    gap: 12px;
+  }
+  .sub-grid .export-item {
+    background: rgba(255,255,255,0.005);
+    border-color: var(--line-2);
+  }
+  label.ck{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; color:var(--muted); cursor:pointer}
+  label.ck input{accent-color:var(--cyan); width:15px; height:15px}
 
   .note{font-family:var(--mono); font-size:11.5px; color:var(--faint); margin-top:10px}
   .hidden{display:none !important}
@@ -323,13 +393,13 @@
         </div>
       </div>
       <div class="card">
-        <div class="ct">Final Predicted Output</div>
+        <div class="ct">Land Cover Map</div>
         <div class="frame"><span class="tag">Material Map</span><canvas id="finalCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
         <div class="legend" id="legend"></div>
         <div class="note">Derived from synthesized RGB + brightness temperature.</div>
       </div>
       <div class="card">
-        <div class="ct">Ground Reconstruction (Fused)</div>
+        <div class="ct">Final Reconstruction</div>
         <div class="frame"><span class="tag">All Signals</span><canvas id="reconCanvas" width="512" height="512"></canvas><div class="empty">—</div></div>
         <div style="margin-top:12px">
           <div class="meta-row"><span class="mk">Detail</span><span class="mv">SR thermal (pan-sharpen)</span></div>
@@ -338,6 +408,7 @@
         </div>
         <div class="note">Best single estimate of the ground — fuses input, SR detail, colour and uncertainty.</div>
       </div>
+
     </div>
   </section>
 
@@ -349,7 +420,7 @@
       <canvas id="cmpBase" class="base"></canvas>
       <canvas id="cmpTop" class="top-layer"></canvas>
       <div class="lbl" style="left:10px">Original Thermal</div>
-      <div class="lbl" style="right:10px">Final Prediction</div>
+      <div class="lbl" style="right:10px">Final Reconstruction</div>
       <div class="divider" id="cmpDivider"></div>
       <div class="knob" id="cmpKnob">⇆</div>
     </div>
@@ -432,14 +503,60 @@
   <!-- ===================== EXPORT ===================== -->
   <section class="panel">
     <div class="head"><h2><span class="eyebrow">12</span>Export</h2></div>
-    <div class="export-row">
-      <label class="ck"><input type="checkbox" value="super_resolution" checked>Super Resolution</label>
-      <label class="ck"><input type="checkbox" value="synth_rgb" checked>Synthesized RGB</label>
-      <label class="ck"><input type="checkbox" value="final_prediction" checked>Final Prediction</label>
-      <label class="ck"><input type="checkbox" value="reconstruction" checked>Ground Reconstruction</label>
-      <label class="ck"><input type="checkbox" value="uncertainty">Uncertainty</label>
-      <label class="ck"><input type="checkbox" value="report" checked>Report (.html)</label>
-      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download</button>
+    
+    <!-- Primary Downloads -->
+    <div class="export-grid">
+      <div class="export-item">
+        <span class="export-name">Super Resolution</span>
+        <div class="format-opts">
+          <label class="ck"><input type="checkbox" id="exp_sr_png" checked> PNG</label>
+          <label class="ck"><input type="checkbox" id="exp_sr_tiff" checked> TIFF</label>
+        </div>
+      </div>
+      <div class="export-item">
+        <span class="export-name">Final Reconstruction</span>
+        <div class="format-opts">
+          <label class="ck"><input type="checkbox" id="exp_recon_png" checked> PNG</label>
+          <label class="ck"><input type="checkbox" id="exp_recon_tiff" checked> TIFF</label>
+        </div>
+      </div>
+      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download Selected</button>
+    </div>
+
+    <!-- Accordion: More Downloads -->
+    <div class="accordion" id="accContainer">
+      <button class="accordion-trigger" id="accTrigger">More Downloads... <span class="arrow-icon">▼</span></button>
+      <div class="accordion-content">
+        <div class="export-grid sub-grid">
+          <div class="export-item">
+            <span class="export-name">Synthesized RGB</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_rgb_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_rgb_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Land Cover Map</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_lcm_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_lcm_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Uncertainty</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_unc_png"> PNG</label>
+              <label class="ck"><input type="checkbox" id="exp_unc_tiff"> TIFF</label>
+            </div>
+          </div>
+          <div class="export-item">
+            <span class="export-name">Inference Report</span>
+            <div class="format-opts">
+              <label class="ck"><input type="checkbox" id="exp_report_html"> HTML</label>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -490,12 +607,12 @@ const STAGES=[
   {name:'Uncertainty Estimation', algo:'Predictive entropy of mixture weights',
    desc:'Decomposes uncertainty (within/between mode) and computes the mixing entropy per pixel.',
    in:'synth_rgb', out:'uncertainty', frac:.14},
-  {name:'Final Predicted Output', algo:'Material map from RGB + BT',
+  {name:'Land Cover Map', algo:'Material map from RGB + BT',
    desc:'Assigns each pixel a land-cover class from the synthesized colour and brightness temperature.',
-   in:'synth_rgb', out:'final_prediction', frac:.04},
-  {name:'Ground Reconstruction (Fusion)', algo:'Pan-sharpen + confident abstention',
+   in:'synth_rgb', out:'land_cover_map', frac:.04},
+  {name:'Final Reconstruction', algo:'Pan-sharpen + confident abstention',
    desc:'Fuses everything: SR thermal detail drives luminance, mixture colour supplies hue where confident, and high-entropy pixels fall back to calibrated thermal — one best estimate of the ground.',
-   in:'synth_rgb', out:'reconstruction', frac:.02},
+   in:'synth_rgb', out:'final_reconstruction', frac:.02},
 ];
 
 function buildPipe(){
@@ -609,9 +726,9 @@ async function revealOutputs(){
   const d=RESULT;
   await drawImg('srCanvas', d.images.super_resolution);
   await drawImg('rgbCanvas', d.images.synth_rgb);
-  await drawImg('finalCanvas', d.images.final_prediction);
-  await drawImg('reconCanvas', d.images.reconstruction);
-  await drawImg('inspCanvas', d.images.final_prediction);
+  await drawImg('finalCanvas', d.images.land_cover_map);
+  await drawImg('reconCanvas', d.images.final_reconstruction);
+  await drawImg('inspCanvas', d.images.land_cover_map);
   $('#srStatus').textContent='Completed';
   renderLegend(); renderSummary(d.summary); renderMetrics(d.metrics);
   await setupCompare(); buildExplorer(); $('#btnDownload').disabled=false;
@@ -651,7 +768,7 @@ async function setupCompare(){
   const base=$('#cmpBase'), top=$('#cmpTop'); const W=640,H=400;
   [base,top].forEach(c=>{c.width=W;c.height=H;});
   await loadInto(base.getContext('2d'), RESULT.images.thermal_input, W,H);
-  await loadInto(top.getContext('2d'), RESULT.images.reconstruction, W,H);
+  await loadInto(top.getContext('2d'), RESULT.images.final_reconstruction, W,H);
   setDivider(50);
 }
 function setDivider(pct){
@@ -694,7 +811,7 @@ $('#inspCanvas').addEventListener('click',e=>{
   $('#iplabel').innerHTML=`<span class="sw" style="background:rgb(${cls.color.join(',')})"></span>${cls.name}`;
   $('#ipconf').textContent=(conf*100).toFixed(1)+' %';
   $('#ipent').textContent=ent.toFixed(3);
-  drawImg('inspCanvas', RESULT.images.final_prediction).then(()=>{
+  drawImg('inspCanvas', RESULT.images.land_cover_map).then(()=>{
     const c=$('#inspCanvas'); const ctx=c.getContext('2d'); const s=c.width/GRIDS.size;
     ctx.strokeStyle='#37d2df'; ctx.lineWidth=2; ctx.strokeRect(x*s-5,y*s-5,10,10);
   });
@@ -721,16 +838,99 @@ function showStage(i, box){
 
 /* =================== EXPORT =================== */
 function download(name, uri){const a=document.createElement('a'); a.href=uri; a.download=name; a.click();}
-$('#btnDownload').addEventListener('click',()=>{
-  if(!RESULT)return;
-  const checks=[...document.querySelectorAll('.export-row input:checked')].map(c=>c.value);
-  const id=RESULT.scene.tile? 'SUTRAM_'+RESULT.scene.tile : 'SUTRAM_upload';
-  checks.forEach(v=>{
-    if(v==='report'){ download(id+'_report.html', reportUri()); }
-    else if(RESULT.images[v]){ download(id+'_'+v+'.png', RESULT.images[v]); }
-  });
-  toast('Downloaded '+checks.length+' file(s)');
+
+$('#accTrigger').addEventListener('click', () => {
+  $('#accContainer').classList.toggle('open');
 });
+
+$('#btnDownload').addEventListener('click', async () => {
+  if(!RESULT) return;
+  
+  const id = RESULT.scene.tile ? 'SUTRAM_' + RESULT.scene.tile : 'SUTRAM_upload';
+  const scene_id = SELECTED;
+  
+  const downloads = [
+    { id: 'exp_sr_png', type: 'super_resolution', format: 'png' },
+    { id: 'exp_sr_tiff', type: 'super_resolution', format: 'tiff' },
+    { id: 'exp_recon_png', type: 'final_reconstruction', format: 'png' },
+    { id: 'exp_recon_tiff', type: 'final_reconstruction', format: 'tiff' },
+    { id: 'exp_rgb_png', type: 'synth_rgb', format: 'png' },
+    { id: 'exp_rgb_tiff', type: 'synth_rgb', format: 'tiff' },
+    { id: 'exp_lcm_png', type: 'land_cover_map', format: 'png' },
+    { id: 'exp_lcm_tiff', type: 'land_cover_map', format: 'tiff' },
+    { id: 'exp_unc_png', type: 'uncertainty', format: 'png' },
+    { id: 'exp_unc_tiff', type: 'uncertainty', format: 'tiff' },
+    { id: 'exp_report_html', type: 'report', format: 'html' }
+  ];
+  
+  const checked = downloads.filter(d => {
+    const el = $('#' + d.id);
+    return el && el.checked;
+  });
+  
+  if (checked.length === 0) {
+    toast('Please select at least one file to download.');
+    return;
+  }
+  
+  $('#btnDownload').disabled = true;
+  const originalText = $('#btnDownload').textContent;
+  $('#btnDownload').textContent = 'Downloading...';
+  
+  if (checked.length === 1) {
+    const d = checked[0];
+    if (d.format === 'html') {
+      download(id + '_report.html', reportUri());
+    } else if (d.format === 'png') {
+      const imgUri = RESULT.images[d.type];
+      if (imgUri) download(id + '_' + d.type + '.png', imgUri);
+    } else if (d.format === 'tiff') {
+      try {
+        const r = await fetch('/api/download_geotiff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scene_id: scene_id, output_type: d.type })
+        });
+        if (r.ok) {
+          const blob = await r.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          download(id + '_' + d.type + '.tif', blobUrl);
+          URL.revokeObjectURL(blobUrl);
+        } else {
+          const err = await r.json();
+          toast('TIFF download failed: ' + (err.error || r.statusText));
+        }
+      } catch (err) {
+        toast('TIFF download error: ' + err.message);
+      }
+    }
+    toast('Downloaded 1 file');
+  } else {
+    try {
+      const r = await fetch('/api/download_zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: scene_id, items: checked.map(c => ({ type: c.type, format: c.format })) })
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        download(id + '_export.zip', blobUrl);
+        URL.revokeObjectURL(blobUrl);
+        toast('Downloaded ZIP package');
+      } else {
+        const err = await r.json();
+        toast('ZIP download failed: ' + (err.error || r.statusText));
+      }
+    } catch (err) {
+      toast('ZIP download error: ' + err.message);
+    }
+  }
+  
+  $('#btnDownload').disabled = false;
+  $('#btnDownload').textContent = originalText;
+});
+
 function reportUri(){
   const d=RESULT, m=d.metrics, s=d.summary;
   const rows=o=>Object.entries(o).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
@@ -745,7 +945,7 @@ function reportUri(){
   ${s.distribution.map(x=>`<tr><td>${x.label}</td><td>${x.pct}</td></tr>`).join('')}</table>
   <h2>Outputs</h2>
   <img src="${d.images.super_resolution}" width=240> <img src="${d.images.synth_rgb}" width=240>
-  <img src="${d.images.final_prediction}" width=240>
+  <img src="${d.images.land_cover_map}" width=240>
   <p style="color:#666;margin-top:30px">Generated by the SUTRAM dashboard · real model inference.</p>`;
   return 'data:text/html;charset=utf-8,'+encodeURIComponent(html);
 }
