@@ -636,6 +636,162 @@ def download_geotiff():
         return jsonify({"error": f"Export failed: {e}"}), 500
 
 
+@app.post("/api/download_zip")
+def download_zip():
+    import zipfile
+    import io
+    import base64
+    from inference.geotiff_export import export_sr_geotiff, export_colorized_geotiff
+    try:
+        body = request.get_json(silent=True) or {}
+        scene_id = body.get("scene_id")
+        items = body.get("items", [])
+        
+        if not items:
+            return jsonify({"error": "No items requested"}), 400
+            
+        if not scene_id or scene_id == "null":
+            ref_path = os.path.join(ROOT, "output", "temp_upload.tif")
+            if not os.path.exists(ref_path):
+                return jsonify({"error": "No uploaded reference file found."}), 404
+            lr_np = read_thermal_any(ref_path)
+            meta = {
+                "satellite": "User Upload",
+                "sensor": "Thermal (uploaded)",
+                "acquisition": "—",
+                "wrs_path": "—",
+                "wrs_row": "—",
+                "processing": "—"
+            }
+        else:
+            tile = next((t for t in load_demo_manifest().get("tiles", [])
+                         if t["id"] == scene_id), None)
+            if not tile:
+                return jsonify({"error": f"Scene '{scene_id}' not found."}), 404
+            ref_path = find_scene_b10(tile["product_id"])
+            lr_np = load_scene_array(scene_id)
+            meta = demo_scene_meta(tile)
+            
+        if lr_np is None:
+            return jsonify({"error": "Failed to load input thermal array."}), 404
+            
+        if not ref_path or not os.path.exists(ref_path):
+            return jsonify({"error": "No valid reference GeoTIFF file available on server."}), 404
+
+        lr256 = resize_to(lr_np, 256) if lr_np.shape != (256, 256) else lr_np
+        lr_t = torch.from_numpy(calibrate_thermal_to_norm(lr256)).unsqueeze(0).unsqueeze(0).float()
+        res = MODEL.infer(lr_t)
+        
+        bt_sr = res["sr_bt"]
+        rgb_u8 = normalize_rgb(res["rgb_raw"])
+        rgb_view = display_stretch(rgb_u8)
+        fused = fuse_reconstruction(bt_sr, rgb_view, res["entropy"],
+                                    K=MODEL.K, confidence=res["confidence"])
+        label, seg = derive_landcover(rgb_view, bt_sr)
+        ent = res["entropy"]
+        ent_norm = np.clip((ent - ent.min()) / max(ent.max() - ent.min(), 1e-6), 0, 1)
+        unc_img = (ent_norm * 255).astype(np.uint8)
+        
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            os.makedirs(os.path.join(ROOT, "output", "temp_exports"), exist_ok=True)
+            
+            for item in items:
+                otype = item["type"]
+                oformat = item["format"]
+                filename_base = f"SUTRAM_{scene_id or 'upload'}_{otype}"
+                
+                if oformat == "png":
+                    if otype == "super_resolution":
+                        bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+                        arr = (bt_sr_norm * 255.0).astype(np.uint8)
+                        img = Image.fromarray(arr, mode="L")
+                    elif otype == "final_reconstruction":
+                        img = Image.fromarray(fused, mode="RGB")
+                    elif otype == "synth_rgb":
+                        img = Image.fromarray(rgb_view, mode="RGB")
+                    elif otype == "land_cover_map":
+                        img = Image.fromarray(seg, mode="RGB")
+                    elif otype == "uncertainty":
+                        img = Image.fromarray(unc_img, mode="L")
+                    else:
+                        continue
+                    
+                    img_io = io.BytesIO()
+                    img.save(img_io, format="PNG")
+                    zip_file.writestr(f"{filename_base}.png", img_io.getvalue())
+                    
+                elif oformat == "tiff":
+                    temp_tif_path = os.path.join(ROOT, "output", "temp_exports", f"zip_temp_{otype}.tif")
+                    if otype == "super_resolution":
+                        bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+                        bt_sr_u8 = (bt_sr_norm * 255.0).astype(np.uint8)
+                        export_sr_geotiff(bt_sr_u8, ref_path, temp_tif_path)
+                    elif otype == "final_reconstruction":
+                        export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
+                    elif otype == "synth_rgb":
+                        export_colorized_geotiff(np.transpose(rgb_view, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
+                    elif otype == "land_cover_map":
+                        export_colorized_geotiff(np.transpose(seg, (2, 0, 1)).astype(np.uint8), ref_path, temp_tif_path)
+                    elif otype == "uncertainty":
+                        export_sr_geotiff(unc_img, ref_path, temp_tif_path)
+                    else:
+                        continue
+                    zip_file.write(temp_tif_path, f"{filename_base}.tif")
+                    
+                elif oformat == "html" and otype == "report":
+                    m = {
+                        "PSNR": round(float(MODEL.stored_metrics.get("psnr", 0)), 2),
+                        "SSIM": round(float(MODEL.stored_metrics.get("ssim", 0)), 3),
+                        "BT-RMSE (K)": round(float(MODEL.stored_metrics.get("bt_rmse", 0)), 3),
+                        "ECE": round(float(MODEL.stored_metrics.get("ece", 0)), 3),
+                        "Sparsification AUC": round(float(MODEL.stored_metrics.get("sparsification_auc", 0)), 3),
+                        "Inference Latency (ms)": round(float(res["time_ms"]), 1),
+                    }
+                    counts = np.bincount(label.ravel(), minlength=len(CLASS_NAMES))
+                    total = int(counts.sum())
+                    dist = [{"label": CLASS_NAMES[i], "pct": round(100.0 * counts[i] / total, 1)}
+                            for i in np.argsort(counts)[::-1]]
+                    dominant = dist[0]["label"]
+                    dom_conf = round(float(res["confidence"][label == np.argmax(counts)].mean()) * 100, 1) if total else 0.0
+                    mean_entropy = round(float(ent.mean()), 3)
+                    
+                    rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in m.items())
+                    dist_rows = "".join(f"<tr><td>{x['label']}</td><td>{x['pct']}</td></tr>" for x in dist)
+                    
+                    def to_b64_src(pil_img):
+                        b = io.BytesIO()
+                        pil_img.save(b, format="PNG")
+                        return "data:image/png;base64," + base64.b64encode(b.getvalue()).decode()
+                        
+                    sr_b64 = to_b64_src(Image.fromarray((np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0) * 255.0).astype(np.uint8), mode="L"))
+                    rgb_b64 = to_b64_src(Image.fromarray(rgb_view, mode="RGB"))
+                    seg_b64 = to_b64_src(Image.fromarray(seg, mode="RGB"))
+                    
+                    html_content = f"""<!doctype html><meta charset=utf8><title>SUTRAM Report</title>
+<body style="font-family:system-ui;max-width:760px;margin:40px auto;color:#111">
+<h1>SUTRAM Inference Report</h1>
+<p><b>Scene:</b> {meta.get('satellite', 'User Upload')} · WRS {meta.get('wrs_path','—')}/{meta.get('wrs_row','—')} · {meta.get('acquisition','—')}</p>
+<p><b>Model:</b> {MODEL.config.get('model_name', 'Project SUTRAM')} v{MODEL.version} · {round(MODEL.n_params / 1e6, 2)}M params · {str(MODEL.device).upper()}</p>
+<h2>Metrics</h2><table border=1 cellpadding=6 style="border-collapse:collapse">{rows}</table>
+<h2>Prediction</h2><p>Dominant: <b>{dominant}</b> ({dom_conf}% conf, mean entropy {mean_entropy})</p>
+<table border=1 cellpadding=6 style="border-collapse:collapse"><tr><th>Material</th><th>%</th></tr>
+{dist_rows}</table>
+<h2>Outputs</h2>
+<img src="{sr_b64}" width=240> <img src="{rgb_b64}" width=240>
+<img src="{seg_b64}" width=240>
+<p style="color:#666;margin-top:30px">Generated by the SUTRAM dashboard · real model inference.</p>"""
+                    
+                    zip_file.writestr(f"SUTRAM_{scene_id or 'upload'}_report.html", html_content)
+        
+        zip_buffer.seek(0)
+        return send_file(zip_buffer, as_attachment=True, download_name=f"SUTRAM_{scene_id or 'upload'}_export.zip", mimetype="application/zip")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"ZIP packaging failed: {e}"}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
     print(f"[sutram] serving dashboard at http://127.0.0.1:{port}")
