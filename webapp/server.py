@@ -600,7 +600,10 @@ def download_geotiff():
         
         if output_type == "super_resolution":
             bt_sr = res["sr_bt"]
-            export_sr_geotiff(bt_sr, ref_path, temp_out_path)
+            # Stretch [TB_MIN, TB_MAX] range to [0, 255] uint8 for correct display in photo viewers
+            bt_sr_norm = np.clip((bt_sr - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+            bt_sr_u8 = (bt_sr_norm * 255.0).astype(np.uint8)
+            export_sr_geotiff(bt_sr_u8, ref_path, temp_out_path)
         elif output_type == "final_reconstruction":
             bt_sr = res["sr_bt"]
             rgb_u8 = normalize_rgb(res["rgb_raw"])
