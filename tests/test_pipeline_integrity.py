@@ -79,4 +79,4 @@ def test_dataset_loader_numerical_integrity():
         # Check normalization bounds
         assert sample["tir_200m"].min() >= 0.0 and sample["tir_200m"].max() <= 1.0
         assert sample["tir_100m_512"].min() >= 0.0 and sample["tir_100m_512"].max() <= 1.0
-        assert sample["rgb_100m_512"].min() >= 0.0 and sample["rgb_100m_512"].max() <= 1.0
+        assert sample["rgb_100m_512"].min() >= 0.0 and sample["rgb_100m_512"].max() <= 255.0

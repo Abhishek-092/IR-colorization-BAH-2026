@@ -209,13 +209,19 @@ def main():
         
         backbone = ResNetBackbone()
         sr_head = SRHead()
-        mixture_head = MixtureHead(K=checkpoint["config"]["K_components"])
-        
         backbone.load_state_dict(checkpoint["backbone_state_dict"])
         sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
-        mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
-        
-        pipeline = SUTRAMInferencePipeline(backbone, sr_head, mixture_head, K=checkpoint["config"]["K_components"])
+
+        if "pix2pix_g_state_dict" in checkpoint:
+            from training.pix2pix import FeatureUNetGenerator
+            pix2pix_g = FeatureUNetGenerator(in_channels=1, out_channels=3, feat_channels=64)
+            pix2pix_g.load_state_dict(checkpoint["pix2pix_g_state_dict"])
+            pipeline = SUTRAMInferencePipeline(backbone, sr_head, pix2pix_g=pix2pix_g)
+        else:
+            mixture_head = MixtureHead(K=checkpoint["config"].get("K_components", 6))
+            mixture_head.load_state_dict(checkpoint["mixture_head_state_dict"])
+            pipeline = SUTRAMInferencePipeline(backbone, sr_head, mixture_head=mixture_head, K=checkpoint["config"].get("K_components", 6))
+
         pipeline.eval()
         
         input_dir = args.input if args.input is not None else "input/LC09_L2SP_146044_20260701_20260701_02_T1"
@@ -286,7 +292,7 @@ def main():
             sr_np,
             np.transpose(np.clip(pred_rgb, 0, 255), (1, 2, 0)),
             decode_outs["entropy"].squeeze().numpy(),
-            K=checkpoint["config"]["K_components"],
+            K=checkpoint["config"].get("K_components", 6),
         )
         out_fused_path = f"output/model_outputs/fused_reconstruction_100m/{prod_id}.tif"
         export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.float32),

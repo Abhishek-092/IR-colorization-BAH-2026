@@ -83,7 +83,6 @@ class SutramModel:
 
         self.backbone = ResNetBackbone()
         self.sr_head = SRHead()
-        self.mixture_head = MixtureHead(K=self.K)
         self.backbone.load_state_dict(ck["backbone_state_dict"])
         try:
             self.sr_head.load_state_dict(ck["sr_head_state_dict"])
@@ -95,22 +94,38 @@ class SutramModel:
                 "           python cli.py train-stage1 && python cli.py train-stage2\n"
                 "         then re-export checkpoints/sutram_final.pth.\n"
                 f"         (load error: {e})\n") from e
-        self.mixture_head.load_state_dict(ck["mixture_head_state_dict"])
-        for m in (self.backbone, self.sr_head, self.mixture_head):
+
+        # Dual-Head Auto-Detection
+        if "pix2pix_g_state_dict" in ck:
+            from training.pix2pix import FeatureUNetGenerator
+            self.has_pix2pix = True
+            self.pix2pix_g = FeatureUNetGenerator(in_channels=1, out_channels=3, feat_channels=64)
+            self.pix2pix_g.load_state_dict(ck["pix2pix_g_state_dict"])
+            self.mixture_head = None
+            modules_to_eval = (self.backbone, self.sr_head, self.pix2pix_g)
+        else:
+            self.has_pix2pix = False
+            self.pix2pix_g = None
+            self.mixture_head = MixtureHead(K=self.K)
+            self.mixture_head.load_state_dict(ck["mixture_head_state_dict"])
+            modules_to_eval = (self.backbone, self.sr_head, self.mixture_head)
+
+        for m in modules_to_eval:
             m.eval().to(self.device)
 
         self.n_params = sum(
-            p.numel() for m in (self.backbone, self.sr_head, self.mixture_head)
-            for p in m.parameters())
+            p.numel() for m in modules_to_eval for p in m.parameters())
 
-        # Warm the graph so the first real request isn't billed for lazy
-        # device/kernel initialisation (matters a lot on MPS/CUDA).
+        # Warm the graph so the first real request isn't billed for lazy device initialisation
         with torch.no_grad():
             dummy = torch.zeros(1, 1, 256, 256, device=self.device)
             for _ in range(3):
                 fdum = self.backbone(dummy)
                 sdum = self.sr_head(fdum, dummy)
-                self.mixture_head(fdum, sdum)
+                if self.has_pix2pix:
+                    self.pix2pix_g(sdum, fdum)
+                else:
+                    self.mixture_head(fdum, sdum)
         self._sync()
 
     def _sync(self):
@@ -127,52 +142,64 @@ class SutramModel:
 
     @torch.no_grad()
     def infer(self, lr_norm):
-        """Run the real forward pass. `lr_norm` is a float32 tensor (1,1,H,W) of
-        already-calibrated, normalized brightness temperature in [0, 1]
-        (calibration is done host-side via sutram.calibration.autocalibrate, so
-        this matches the training input and the inference pipeline exactly).
-        Returns a dict of numpy arrays with full uncertainty decomposition."""
+        """Run the real forward pass."""
         lr_norm = lr_norm.to(self.device)
 
         self._sync()
         t0 = time.perf_counter()
         feats = self.backbone(lr_norm)
         sr_tir = self.sr_head(feats, lr_norm)
-        logit_w, means, log_scales = self.mixture_head(feats, sr_tir)
 
-        # --- mixture decode (mirrors DecodeSubmoduleFP32, plus pi_max) --------
-        logit_w = logit_w.float(); means = means.float(); log_scales = log_scales.float()
-        pi = F.softmax(logit_w, dim=1)                       # (B,K,H,W)
-        scales = F.softplus(log_scales) + 1.0                # (B,K,3,H,W)
+        if self.has_pix2pix:
+            rgb_raw = self.pix2pix_g(sr_tir, feats)
+            H, W = sr_tir.shape[-2:]
+            pi_max = torch.ones((H, W), device=self.device)
+            entropy = torch.zeros((H, W), device=self.device)
+            within = torch.zeros((H, W), device=self.device)
+            between = torch.zeros((H, W), device=self.device)
+            self._sync()
+            dt_ms = (time.perf_counter() - t0) * 1000.0
+            sr_bt = self._denorm_sr(sr_tir)
 
-        top_w, top_i = torch.topk(pi, k=min(2, self.K), dim=1)
-        pi_max = top_w[:, 0]                                  # (B,H,W) confidence
+            return {
+                "sr_bt": sr_bt.squeeze().cpu().numpy(),
+                "rgb_raw": rgb_raw.squeeze().cpu().numpy(),
+                "confidence": pi_max.cpu().numpy(),
+                "entropy": entropy.cpu().numpy(),
+                "within_var": within.cpu().numpy(),
+                "between_var": between.cpu().numpy(),
+                "time_ms": dt_ms,
+            }
+        else:
+            logit_w, means, log_scales = self.mixture_head(feats, sr_tir)
+            logit_w = logit_w.float(); means = means.float(); log_scales = log_scales.float()
+            pi = F.softmax(logit_w, dim=1)                       # (B,K,H,W)
+            scales = F.softplus(log_scales) + 1.0                # (B,K,3,H,W)
 
-        log_pi = torch.log(torch.clamp(pi, min=1e-7))
-        entropy = -(pi * log_pi).sum(dim=1)                  # (B,H,W)
-        pi_u = pi.unsqueeze(2)
-        within = (pi_u * scales**2 * (np.pi**2 / 3.0)).sum(1).mean(1)
-        bar_mu = (pi_u * means).sum(1, keepdim=True)
-        between = (pi_u * (means - bar_mu)**2).sum(1).mean(1)
-        # Displayed colour = mixture EXPECTATION E[x] = sum_k pi_k * mean_k, not
-        # the single argmax-component mean. The expectation is smoother (no hard
-        # posterization) and measurably closer to ground truth (val RGB L1 15.4
-        # vs 18.6 for the dominant-component decode).
-        rgb_expect = bar_mu.squeeze(1)                        # (B,3,H,W)
-        self._sync()
-        dt_ms = (time.perf_counter() - t0) * 1000.0
+            top_w, top_i = torch.topk(pi, k=min(2, self.K), dim=1)
+            pi_max = top_w[:, 0]                                  # (B,H,W) confidence
 
-        sr_bt = self._denorm_sr(sr_tir)                      # (1,1,512,512) Kelvin
+            log_pi = torch.log(torch.clamp(pi, min=1e-7))
+            entropy = -(pi * log_pi).sum(dim=1)                  # (B,H,W)
+            pi_u = pi.unsqueeze(2)
+            within = (pi_u * scales**2 * (np.pi**2 / 3.0)).sum(1).mean(1)
+            bar_mu = (pi_u * means).sum(1, keepdim=True)
+            between = (pi_u * (means - bar_mu)**2).sum(1).mean(1)
+            rgb_expect = bar_mu.squeeze(1)                        # (B,3,H,W)
+            self._sync()
+            dt_ms = (time.perf_counter() - t0) * 1000.0
 
-        return {
-            "sr_bt": sr_bt.squeeze().cpu().numpy(),          # (512,512) brightness temp (K)
-            "rgb_raw": rgb_expect.squeeze().cpu().numpy(),   # (3,512,512) mixture expectation
-            "confidence": pi_max.squeeze().cpu().numpy(),    # (512,512) 0..1
-            "entropy": entropy.squeeze().cpu().numpy(),      # (512,512)
-            "within_var": within.squeeze().cpu().numpy(),
-            "between_var": between.squeeze().cpu().numpy(),
-            "time_ms": dt_ms,
-        }
+            sr_bt = self._denorm_sr(sr_tir)                      # (1,1,512,512) Kelvin
+
+            return {
+                "sr_bt": sr_bt.squeeze().cpu().numpy(),          # (512,512) brightness temp (K)
+                "rgb_raw": rgb_expect.squeeze().cpu().numpy(),   # (3,512,512) mixture expectation
+                "confidence": pi_max.squeeze().cpu().numpy(),    # (512,512) 0..1
+                "entropy": entropy.squeeze().cpu().numpy(),      # (512,512)
+                "within_var": within.squeeze().cpu().numpy(),
+                "between_var": between.squeeze().cpu().numpy(),
+                "time_ms": dt_ms,
+            }
 
 
 MODEL = SutramModel(CKPT_PATH)

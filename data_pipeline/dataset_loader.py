@@ -25,7 +25,7 @@ class PatchDataset(Dataset):
             product_dirs = [os.path.join(patches_dir, pid) for pid in product_ids if os.path.isdir(os.path.join(patches_dir, pid))]
 
         for pdir in product_dirs:
-            p_samples = sorted(glob.glob(os.path.join(pdir, "sample_*")))
+            p_samples = sorted([d for d in glob.glob(os.path.join(pdir, "*")) if os.path.isdir(d)])
             self.samples.extend(p_samples)
 
     def __len__(self):
@@ -34,17 +34,26 @@ class PatchDataset(Dataset):
     def __getitem__(self, idx):
         sample_path = self.samples[idx]
 
-        # Enforce the hard rule at runtime: refuse to read PNGs
-        # (Though we list sample folders, we verify files inside aren't .png)
         for fname in os.listdir(sample_path):
             if fname.lower().endswith(".png"):
-                # Specifically protect against loader being fed pngs
                 pass
 
-        # Load raw numpy arrays
-        tir_200m_path = os.path.join(sample_path, "tir_200m.npy")
-        tir_100m_path = os.path.join(sample_path, "tir_100m_512.npy")
-        rgb_100m_path = os.path.join(sample_path, "rgb_100m_512.npy")
+        # Find array files matching suffixes
+        tir_200m_path, tir_100m_path, rgb_100m_path = None, None, None
+        for fname in os.listdir(sample_path):
+            if fname.endswith("tir_200m.npy"):
+                tir_200m_path = os.path.join(sample_path, fname)
+            elif fname.endswith("tir_100m_512.npy") or fname.endswith("tir_100m.npy"):
+                tir_100m_path = os.path.join(sample_path, fname)
+            elif fname.endswith("rgb_100m_512.npy") or fname.endswith("rgb_100m.npy"):
+                rgb_100m_path = os.path.join(sample_path, fname)
+
+        if not tir_200m_path:
+            tir_200m_path = os.path.join(sample_path, "tir_200m.npy")
+        if not tir_100m_path:
+            tir_100m_path = os.path.join(sample_path, "tir_100m_512.npy")
+        if not rgb_100m_path:
+            rgb_100m_path = os.path.join(sample_path, "rgb_100m_512.npy")
 
         for p in [tir_200m_path, tir_100m_path, rgb_100m_path]:
             if not p.endswith(".npy"):

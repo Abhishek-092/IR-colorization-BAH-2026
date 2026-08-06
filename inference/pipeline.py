@@ -73,32 +73,37 @@ class DecodeSubmoduleFP32(nn.Module):
 
 class SUTRAMInferencePipeline(nn.Module):
     """
-    Fused inference pipeline: Calibration -> Backbone -> SR -> Mixture -> Decode
+    Fused inference pipeline: Calibration -> Backbone -> SR -> Mixture/Pix2Pix -> Decode
     Designed to compile into a single execution graph.
     """
-    def __init__(self, backbone, sr_head, mixture_head, K=6):
+    def __init__(self, backbone, sr_head, mixture_head=None, pix2pix_g=None, K=6):
         super().__init__()
         self.backbone = backbone
         self.sr_head = sr_head
         self.mixture_head = mixture_head
+        self.pix2pix_g = pix2pix_g
         self.decode = DecodeSubmoduleFP32(K=K)
 
     def forward(self, lr_tir_norm):
-        # Input is normalized brightness temperature in [0, 1]. Radiometric
-        # calibration + Planck inversion happen in host preprocessing
-        # (sutram.calibration.autocalibrate) so this graph is input-type agnostic
-        # and ONNX-portable; the physics still feeds super-resolution, just one
-        # stage earlier in the pipeline.
         features = self.backbone(lr_tir_norm)
 
         # Stage 1 Super-Resolution (operates in brightness-temperature space)
         sr_tir = self.sr_head(features, lr_tir_norm)
 
-        # Stage 2 Color Parameter Estimation
-        logit_weights, means, log_scales = self.mixture_head(features, sr_tir)
-
-        # FP32 Decoding
-        decode_outputs = self.decode(logit_weights, means, log_scales)
+        if self.pix2pix_g is not None:
+            rgb_raw = self.pix2pix_g(sr_tir, features)
+            B, _, H, W = sr_tir.shape
+            decode_outputs = {
+                "dominant_color": rgb_raw,
+                "secondary_color": rgb_raw,
+                "secondary_weight": torch.zeros((B, H, W), device=sr_tir.device),
+                "within_mode_variance": torch.zeros((B, H, W), device=sr_tir.device),
+                "between_mode_variance": torch.zeros((B, H, W), device=sr_tir.device),
+                "entropy": torch.zeros((B, H, W), device=sr_tir.device)
+            }
+        else:
+            logit_weights, means, log_scales = self.mixture_head(features, sr_tir)
+            decode_outputs = self.decode(logit_weights, means, log_scales)
 
         # Denormalize the super-resolved thermal back to physical brightness
         # temperature (Kelvin) — the SR deliverable is in physical units.

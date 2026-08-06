@@ -296,6 +296,104 @@ class UnifiedTrainer:
                 torch.save(self.mixture_head.state_dict(), os.path.join(self.checkpoint_dir, "mixture_head_stage2.pth"))
                 logger.info(f"New best validation color loss locked: {best_loss:.4f}")
 
+    def train_stage2_pix2pix(self):
+        """Trains the Pix2Pix FeatureUNetGenerator and PatchGANDiscriminator with backbone weights frozen."""
+        logger.info("--- Starting Stage 2: Pix2Pix GAN Colorization Training ---")
+
+        bb_path = os.path.join(self.checkpoint_dir, "backbone_stage1.pth")
+        sr_path = os.path.join(self.checkpoint_dir, "sr_head_stage1.pth")
+        if os.path.exists(bb_path):
+            self.backbone.load_state_dict(torch.load(bb_path, map_location=self.device))
+        if os.path.exists(sr_path):
+            self.sr_head.load_state_dict(torch.load(sr_path, map_location=self.device))
+
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+        for p in self.sr_head.parameters():
+            p.requires_grad = False
+        self.backbone.eval()
+        self.sr_head.eval()
+
+        from training.pix2pix import FeatureUNetGenerator, PatchGANDiscriminator, SpatialColorLoss
+        self.pix2pix_g = FeatureUNetGenerator(in_channels=1, out_channels=3, feat_channels=64).to(self.device)
+        self.pix2pix_d = PatchGANDiscriminator(in_channels=4).to(self.device)
+
+        opt_g = optim.AdamW(self.pix2pix_g.parameters(), lr=getattr(self.cfg.training.stage2, "lr_g", 2e-4), betas=(0.5, 0.999))
+        opt_d = optim.AdamW(self.pix2pix_d.parameters(), lr=getattr(self.cfg.training.stage2, "lr_d", 2e-4), betas=(0.5, 0.999))
+
+        spatial_loss_fn = SpatialColorLoss().to(self.device)
+        gan_loss_fn = nn.MSELoss()
+
+        epochs = getattr(self.cfg.training.stage2, "epochs", 50)
+        best_loss = float("inf")
+
+        for epoch in range(1, epochs + 1):
+            self.pix2pix_g.train()
+            self.pix2pix_d.train()
+            g_loss_accum = 0.0
+            d_loss_accum = 0.0
+
+            for batch in self.train_loader:
+                lr_tir = batch["tir_200m"].to(self.device)
+                target_rgb = batch["rgb_100m_512"].to(self.device)
+
+                with torch.no_grad():
+                    features = self.backbone(lr_tir)
+                    pred_sr = self.sr_head(features, lr_tir)
+
+                # ----------------------------------------------------
+                # Train Discriminator D
+                # ----------------------------------------------------
+                opt_d.zero_grad()
+                fake_rgb = self.pix2pix_g(pred_sr, features)
+
+                real_pair = torch.cat([pred_sr, target_rgb], dim=1)
+                fake_pair = torch.cat([pred_sr, fake_rgb.detach()], dim=1)
+
+                pred_real = self.pix2pix_d(real_pair)
+                pred_fake = self.pix2pix_d(fake_pair)
+
+                loss_d_real = gan_loss_fn(pred_real, torch.ones_like(pred_real))
+                loss_d_fake = gan_loss_fn(pred_fake, torch.zeros_like(pred_fake))
+                loss_d = (loss_d_real + loss_d_fake) * 0.5
+
+                loss_d.backward()
+                opt_d.step()
+                d_loss_accum += loss_d.item()
+
+                # ----------------------------------------------------
+                # Train Generator G
+                # ----------------------------------------------------
+                opt_g.zero_grad()
+                fake_pair_g = torch.cat([pred_sr, fake_rgb], dim=1)
+                pred_fake_g = self.pix2pix_d(fake_pair_g)
+
+                loss_g_gan = gan_loss_fn(pred_fake_g, torch.ones_like(pred_fake_g))
+                loss_g_spatial, loss_l1, loss_grad, loss_color = spatial_loss_fn(fake_rgb, target_rgb)
+                loss_g = loss_g_gan + loss_g_spatial
+
+                loss_g.backward()
+                opt_g.step()
+                g_loss_accum += loss_g.item()
+
+            g_loss_accum /= max(1, len(self.train_loader))
+            d_loss_accum /= max(1, len(self.train_loader))
+
+            logger.info(f"Epoch {epoch}/{epochs} - Pix2Pix G Loss: {g_loss_accum:.4f} - D Loss: {d_loss_accum:.4f}")
+
+            if g_loss_accum < best_loss:
+                best_loss = g_loss_accum
+                torch.save(self.pix2pix_g.state_dict(), os.path.join(self.checkpoint_dir, "pix2pix_g_stage2.pth"))
+                torch.save(self.pix2pix_d.state_dict(), os.path.join(self.checkpoint_dir, "pix2pix_d_stage2.pth"))
+                torch.save({
+                    "config": dict(self.cfg),
+                    "version": "1.0.0",
+                    "backbone_state_dict": self.backbone.state_dict(),
+                    "sr_head_state_dict": self.sr_head.state_dict(),
+                    "pix2pix_g_state_dict": self.pix2pix_g.state_dict(),
+                }, os.path.join(self.checkpoint_dir, "sutram_pix2pix.pth"))
+                logger.info("New best Pix2Pix generator checkpoint saved to sutram_pix2pix.pth")
+
     def _validate_color(self, criterion):
         self.mixture_head.eval()
         total_loss = 0.0

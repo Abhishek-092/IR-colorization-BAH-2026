@@ -1,5 +1,13 @@
 import numpy as np
 
+try:
+    import torch as _torch
+except ImportError:
+    _torch = None
+
+def _is_tensor(x):
+    return _torch is not None and isinstance(x, _torch.Tensor)
+
 # Standard Landsat 9 Band 10 calibration constants
 ML_DEFAULT = 0.0003342  # Radiance multiplicative scaling factor
 AL_DEFAULT = 0.1        # Radiance additive scaling factor
@@ -11,7 +19,20 @@ def dn_to_radiance(dn, ml=ML_DEFAULT, al=AL_DEFAULT):
     Converts Digital Numbers (DN) to spectral radiance.
     L_lambda = ML * DN + AL
     """
-    return ml * dn.astype(np.float32) + al
+    if _is_tensor(dn):
+        return ml * dn.float() + al
+    return ml * np.asarray(dn, dtype=np.float32) * 1.0 + al
+
+def brightness_temp_to_dn(bt, ml=ML_DEFAULT, al=AL_DEFAULT, k1=K1_DEFAULT, k2=K2_DEFAULT):
+    """
+    Inverse conversion from Brightness Temperature (Kelvin) back to raw DN.
+    """
+    if _is_tensor(bt):
+        radiance = k1 / (_torch.exp(k2 / _torch.clamp(bt, min=1e-6)) - 1.0)
+        return (radiance - al) / ml
+    bt_np = np.asarray(bt, dtype=np.float32)
+    radiance = k1 / (np.exp(k2 / np.clip(bt_np, 1e-6, None)) - 1.0)
+    return (radiance - al) / ml
 
 def radiance_to_brightness_temp(radiance, k1=K1_DEFAULT, k2=K2_DEFAULT):
     """
