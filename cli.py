@@ -271,11 +271,8 @@ def main():
         out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
         out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
         
-        from sutram.calibration.planck import TB_MIN, TB_MAX
-        sr_norm = np.clip((sr_np - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
-        sr_u8 = (sr_norm * 255.0).astype(np.uint8)
-        export_sr_geotiff(sr_u8, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
-        export_colorized_geotiff(np.clip(pred_rgb, 0, 255).astype(np.uint8), ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
+        export_sr_geotiff(sr_np, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
+        export_colorized_geotiff(pred_rgb, ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
 
         # Non colour-coded super-resolution: plain greyscale PNG (hot=bright), the
         # raw super-resolved thermal structure without any false-colour LUT.
@@ -297,7 +294,7 @@ def main():
             K=checkpoint["config"]["K_components"],
         )
         out_fused_path = f"output/model_outputs/fused_reconstruction_100m/{prod_id}.tif"
-        export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.uint8),
+        export_colorized_geotiff(np.transpose(fused, (2, 0, 1)).astype(np.float32),
                                  ref_path if os.path.exists(ref_path) else lr_tir_path, out_fused_path)
         logger.info(f"Inference outputs successfully generated:\n  - SR TIR: {out_sr_path}\n  - Colorized: {out_color_path}\n  - Fused reconstruction: {out_fused_path}")
 
