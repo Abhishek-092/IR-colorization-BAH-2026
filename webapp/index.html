@@ -845,9 +845,6 @@ $('#accTrigger').addEventListener('click', () => {
 
 $('#btnDownload').addEventListener('click', async () => {
   if(!RESULT) return;
-  $('#btnDownload').disabled = true;
-  const originalText = $('#btnDownload').textContent;
-  $('#btnDownload').textContent = 'Downloading...';
   
   const id = RESULT.scene.tile ? 'SUTRAM_' + RESULT.scene.tile : 'SUTRAM_upload';
   const scene_id = SELECTED;
@@ -866,46 +863,72 @@ $('#btnDownload').addEventListener('click', async () => {
     { id: 'exp_report_html', type: 'report', format: 'html' }
   ];
   
-  let count = 0;
-  for (const d of downloads) {
+  const checked = downloads.filter(d => {
     const el = $('#' + d.id);
-    if (el && el.checked) {
-      if (d.format === 'html') {
-        download(id + '_report.html', reportUri());
-        count++;
-      } else if (d.format === 'png') {
-        const imgUri = RESULT.images[d.type];
-        if (imgUri) {
-          download(id + '_' + d.type + '.png', imgUri);
-          count++;
+    return el && el.checked;
+  });
+  
+  if (checked.length === 0) {
+    toast('Please select at least one file to download.');
+    return;
+  }
+  
+  $('#btnDownload').disabled = true;
+  const originalText = $('#btnDownload').textContent;
+  $('#btnDownload').textContent = 'Downloading...';
+  
+  if (checked.length === 1) {
+    const d = checked[0];
+    if (d.format === 'html') {
+      download(id + '_report.html', reportUri());
+    } else if (d.format === 'png') {
+      const imgUri = RESULT.images[d.type];
+      if (imgUri) download(id + '_' + d.type + '.png', imgUri);
+    } else if (d.format === 'tiff') {
+      try {
+        const r = await fetch('/api/download_geotiff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scene_id: scene_id, output_type: d.type })
+        });
+        if (r.ok) {
+          const blob = await r.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          download(id + '_' + d.type + '.tif', blobUrl);
+          URL.revokeObjectURL(blobUrl);
+        } else {
+          const err = await r.json();
+          toast('TIFF download failed: ' + (err.error || r.statusText));
         }
-      } else if (d.format === 'tiff') {
-        try {
-          const r = await fetch('/api/download_geotiff', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scene_id: scene_id, output_type: d.type })
-          });
-          if (r.ok) {
-            const blob = await r.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            download(id + '_' + d.type + '.tif', blobUrl);
-            URL.revokeObjectURL(blobUrl);
-            count++;
-          } else {
-            const err = await r.json();
-            toast('TIFF download failed: ' + (err.error || r.statusText));
-          }
-        } catch (err) {
-          toast('TIFF download error: ' + err.message);
-        }
+      } catch (err) {
+        toast('TIFF download error: ' + err.message);
       }
+    }
+    toast('Downloaded 1 file');
+  } else {
+    try {
+      const r = await fetch('/api/download_zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: scene_id, items: checked.map(c => ({ type: c.type, format: c.format })) })
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        download(id + '_export.zip', blobUrl);
+        URL.revokeObjectURL(blobUrl);
+        toast('Downloaded ZIP package');
+      } else {
+        const err = await r.json();
+        toast('ZIP download failed: ' + (err.error || r.statusText));
+      }
+    } catch (err) {
+      toast('ZIP download error: ' + err.message);
     }
   }
   
   $('#btnDownload').disabled = false;
   $('#btnDownload').textContent = originalText;
-  toast('Downloaded ' + count + ' file(s)');
 });
 
 function reportUri(){
