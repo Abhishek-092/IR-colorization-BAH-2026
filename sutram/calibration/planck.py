@@ -11,9 +11,7 @@ def dn_to_radiance(dn, ml=ML_DEFAULT, al=AL_DEFAULT):
     Converts Digital Numbers (DN) to spectral radiance.
     L_lambda = ML * DN + AL
     """
-    if hasattr(dn, "astype"):
-        return ml * dn.astype(np.float32) + al
-    return ml * dn.float() + al
+    return ml * dn.astype(np.float32) + al
 
 def radiance_to_brightness_temp(radiance, k1=K1_DEFAULT, k2=K2_DEFAULT):
     """
@@ -56,15 +54,3 @@ def normalize_bt(bt, tb_min=TB_MIN, tb_max=TB_MAX):
 def denormalize_bt(x, tb_min=TB_MIN, tb_max=TB_MAX):
     """Inverse of normalize_bt: map a [0, 1] value back to Kelvin."""
     return x * (tb_max - tb_min) + tb_min
-
-
-def brightness_temp_to_dn(tb, ml=ML_DEFAULT, al=AL_DEFAULT, k1=K1_DEFAULT, k2=K2_DEFAULT):
-    """
-    Inverse of dn_to_brightness_temp: convert Brightness Temperature (Kelvin) back to raw DN.
-    """
-    if hasattr(tb, "exp"):  # Torch tensor
-        import torch
-        radiance = k1 / (torch.exp(k2 / tb) - 1.0)
-    else:  # Numpy array or float
-        radiance = k1 / (np.exp(k2 / tb) - 1.0)
-    return (radiance - al) / ml
