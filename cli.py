@@ -271,7 +271,10 @@ def main():
         out_sr_path = f"output/model_outputs/tir_superresolved_100m/{prod_id}.tif"
         out_color_path = f"output/model_outputs/colorized_tir_100m/{prod_id}.tif"
         
-        export_sr_geotiff(sr_np, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
+        from sutram.calibration.planck import TB_MIN, TB_MAX
+        sr_norm = np.clip((sr_np - TB_MIN) / (TB_MAX - TB_MIN), 0.0, 1.0)
+        sr_u8 = (sr_norm * 255.0).astype(np.uint8)
+        export_sr_geotiff(sr_u8, ref_path if os.path.exists(ref_path) else lr_tir_path, out_sr_path)
         export_colorized_geotiff(np.clip(pred_rgb, 0, 255).astype(np.uint8), ref_path if os.path.exists(ref_path) else lr_tir_path, out_color_path)
 
         # Non colour-coded super-resolution: plain greyscale PNG (hot=bright), the
