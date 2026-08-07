@@ -58,18 +58,30 @@ def plot_sparsification_curve(error_curve, save_path):
     plt.close()
     print(f"Sparsification curve saved to: {save_path}")
 
-def plot_calibration_error(ece_by_bin, save_path):
+def plot_calibration_error(nominal_levels, empirical_coverage, save_path):
     """
-    Plots confidence level vs. empirical coverage to show calibration.
+    Plots nominal confidence level vs. measured empirical coverage (a real
+    reliability diagram). Both inputs come directly from
+    compute_regression_ece(..., return_curve=True), so the curve reflects the
+    model's actual calibration rather than a synthetic approximation.
+
+    Args:
+        nominal_levels: 1-D array of nominal confidence-interval levels.
+        empirical_coverage: 1-D array of the measured fraction of targets that
+            fell inside each nominal interval.
     """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    
-    bins = np.linspace(0.1, 0.9, len(ece_by_bin))
-    
+
+    nominal_levels = np.asarray(nominal_levels, dtype=np.float64)
+    empirical_coverage = np.asarray(empirical_coverage, dtype=np.float64)
+
     plt.figure(figsize=(6, 6))
     plt.plot([0, 1], [0, 1], "k--", label="Perfect Calibration")
-    plt.bar(bins, ece_by_bin, width=0.08, alpha=0.7, color="cyan", edgecolor="blue", label="Empirical Coverage")
-    
+    plt.plot(nominal_levels, empirical_coverage, marker="o", color="blue",
+             linewidth=2, label="Empirical Coverage")
+    plt.bar(nominal_levels, empirical_coverage, width=0.06, alpha=0.3,
+            color="cyan", edgecolor="blue")
+
     plt.xlim([0, 1])
     plt.ylim([0, 1])
     plt.title("Calibration Reliability Diagram")
@@ -77,7 +89,7 @@ def plot_calibration_error(ece_by_bin, save_path):
     plt.ylabel("Empirical In-Interval Coverage")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.legend()
-    
+
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Calibration plot saved to: {save_path}")
