@@ -1,27 +1,5 @@
 import os
 import sys
-import warnings
-import platform
-import asyncio
-
-# Suppress NumPy 2.x, Rasterio, and User warnings from cluttering terminal
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*NotGeoreferencedWarning.*")
-warnings.filterwarnings("ignore", message=".*Setting the shape on a NumPy array has been deprecated.*")
-
-try:
-    import rasterio.errors
-    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
-except Exception:
-    pass
-
-# Silence Windows asyncio proactor pipe reset error on disconnect
-if platform.system() == "Windows" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
-    try:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    except Exception:
-        pass
 
 # Insert root directory into sys.path to allow running streamlit without manual PYTHONPATH setting
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +7,8 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 import glob
+import json
+import time
 import numpy as np
 import torch
 import streamlit as st
@@ -44,6 +24,24 @@ from training.backbone import ResNetBackbone
 from training.sr_head import SRHead
 from training.mixture_head import MixtureHead
 from evaluation.visualization import percentile_stretch
+from sutram.calibration.planck import dn_to_brightness_temp
+
+
+def load_reported_metrics(experiment_id="sutram_baseline"):
+    """Load metrics produced by `cli.py evaluate` (experiments/<id>/metrics.json).
+
+    Returns an empty dict if evaluation hasn't been run, so the UI can show a
+    neutral placeholder instead of hardcoded numbers that don't reflect the
+    actual weights on disk.
+    """
+    metrics_path = os.path.join("experiments", experiment_id, "metrics.json")
+    if os.path.exists(metrics_path):
+        try:
+            with open(metrics_path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
 
 # Set premium page layout
 st.set_page_config(layout="wide", page_title="SUTRAM: Satellite Uncertainty-aware Thermal Reconstruction")
@@ -119,7 +117,7 @@ st.markdown("""
 # Accent bar at the top of the UI
 st.markdown('<div class="header-bar"></div>', unsafe_allow_html=True)
 
-st.title("🛰️ Project SUTRAM ")
+st.title("🛰️ Project SUTRAM (Bharatiya Antriksh Hackathon 2026)")
 st.caption("Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling")
 
 # Sidebar configurations
@@ -135,15 +133,17 @@ def load_sutram_pipeline(K):
     mix_head = MixtureHead(K=K)
     
     # Load from the official release checkpoint package first
-    final_path = os.path.join(root_dir, "checkpoints", "sutram_final.pth")
+    final_path = os.path.join("checkpoints", "sutram_final.pth")
     if os.path.exists(final_path):
         checkpoint = torch.load(final_path, map_location="cpu")
         backbone.load_state_dict(checkpoint["backbone_state_dict"])
         sr_head.load_state_dict(checkpoint["sr_head_state_dict"])
         mix_head.load_state_dict(checkpoint["mixture_head_state_dict"])
     else:
-        # Fallback to stage-wise experiments weights if release package is missing
-        checkpoint_dir = os.path.join(root_dir, "experiments", "sutram_baseline", "checkpoints")
+        # Fallback to stage-wise experiments weights if release package is missing.
+        # Must match cfg.experiment_id ("sutram_baseline") used by the trainer and
+        # the checkpoint-packaging script — the old "varna_baseline" path never existed.
+        checkpoint_dir = os.path.join("experiments", "sutram_baseline", "checkpoints")
         bb_path = os.path.join(checkpoint_dir, "backbone_stage1.pth")
         sr_path = os.path.join(checkpoint_dir, "sr_head_stage1.pth")
         mix_path = os.path.join(checkpoint_dir, "mixture_head_stage2.pth")
@@ -161,117 +161,93 @@ def load_sutram_pipeline(K):
 
 pipeline = load_sutram_pipeline(K_components)
 
+# Dynamic Data Explorer Mode Selection
 st.sidebar.header("📂 Data Source Explorer")
-mode = "🛰️ Raw Scene Explorer (input/ folder)"
+mode = st.sidebar.radio("Select Explorer Mode", ["📂 Patch Explorer (Pre-cropped)", "🛰️ Raw Scene Explorer (input/ folder)"])
 
 tir_200 = None
 tir_100_gt = None
 rgb_100_gt = None
 
-import torch.nn.functional as F
-
-HAS_RASTERIO = False
-try:
+if mode == "📂 Patch Explorer (Pre-cropped)":
+    patch_dirs = glob.glob(os.path.join("output", "patches", "*", "sample_*"))
+    if not patch_dirs:
+        st.info("No patch samples found in output/patches. Please run dataset generator first.")
+    else:
+        selected_sample = st.sidebar.selectbox("Select Sample Patch", patch_dirs)
+        # Load sample arrays
+        tir_200 = np.load(os.path.join(selected_sample, "tir_200m.npy")).squeeze()
+        tir_100_gt = np.load(os.path.join(selected_sample, "tir_100m_512.npy")).squeeze()
+        rgb_100_gt = np.load(os.path.join(selected_sample, "rgb_100m_512.npy"))
+        # Reshape RGB if channel-last
+        if rgb_100_gt.ndim == 3 and rgb_100_gt.shape[0] != 3:
+             rgb_100_gt = np.moveaxis(rgb_100_gt, -1, 0)
+else:
+    # Raw Scene Explorer
     import rasterio
     from rasterio.enums import Resampling
-    HAS_RASTERIO = True
-except Exception:
-    HAS_RASTERIO = False
-
-def read_tiff_array(fpath):
-    """
-    Reads raw array from a TIFF file. Uses rasterio if available,
-    or falls back to tifffile/PIL if Windows Application Control blocks rasterio DLLs.
-    """
-    if HAS_RASTERIO:
+    
+    raw_scene_dirs = [d for d in glob.glob(os.path.join("input", "*")) if os.path.isdir(d)]
+    valid_scene_dirs = []
+    
+    # Filter only folders containing a B10 TIFF file
+    for d in raw_scene_dirs:
+        b10s = glob.glob(os.path.join(d, "*_B10.TIF")) + glob.glob(os.path.join(d, "*_B10.tif"))
+        if b10s:
+            valid_scene_dirs.append(d)
+            
+    if not valid_scene_dirs:
+        st.info("No raw scenes found in input/ containing Band 10 TIFF files.")
+    else:
+        selected_scene = st.sidebar.selectbox("Select Raw Scene Folder", valid_scene_dirs)
+        
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                with rasterio.open(fpath) as src:
-                    return src.read(1).astype(np.float32)
-        except Exception:
-            pass
-    try:
-        import tifffile
-        arr = tifffile.imread(fpath).astype(np.float32)
-        if arr.ndim == 3:
-            arr = arr[..., 0]
-        return arr
-    except Exception:
-        pass
-    arr = np.array(Image.open(fpath)).astype(np.float32)
-    if arr.ndim == 3:
-        arr = arr[..., 0]
-    return arr
-
-def downsample_array(arr, target_h, target_w):
-    """Downsamples a 2D float32 array to (target_h, target_w) using PyTorch adaptive pool."""
-    t = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
-    out = F.adaptive_avg_pool2d(t, (target_h, target_w)).squeeze().numpy()
-    return out.astype(np.float32)
-
-raw_scene_dirs = [d for d in glob.glob(os.path.join(root_dir, "input", "*")) if os.path.isdir(d)]
-valid_scene_dirs = []
-
-# Filter only folders containing a B10 TIFF file
-for d in raw_scene_dirs:
-    b10s = glob.glob(os.path.join(d, "*_B10.TIF")) + glob.glob(os.path.join(d, "*_B10.tif"))
-    if b10s:
-        valid_scene_dirs.append(d)
+            # Dynamically load and merge B2, B3, B4, and downsample B10
+            b2s = glob.glob(os.path.join(selected_scene, "*_B2.TIF")) + glob.glob(os.path.join(selected_scene, "*_B2.tif"))
+            b3s = glob.glob(os.path.join(selected_scene, "*_B3.TIF")) + glob.glob(os.path.join(selected_scene, "*_B3.tif"))
+            b4s = glob.glob(os.path.join(selected_scene, "*_B4.TIF")) + glob.glob(os.path.join(selected_scene, "*_B4.tif"))
+            b10s = glob.glob(os.path.join(selected_scene, "*_B10.TIF")) + glob.glob(os.path.join(selected_scene, "*_B10.tif"))
             
-if not valid_scene_dirs:
-    st.info("No raw scenes found in input/ containing Band 10 TIFF files.")
-else:
-    selected_scene = st.sidebar.selectbox("Select Raw Scene Folder", valid_scene_dirs)
-        
-    try:
-        # Dynamically load and merge B2, B3, B4, and downsample B10
-        b2s = glob.glob(os.path.join(selected_scene, "*_B2.TIF")) + glob.glob(os.path.join(selected_scene, "*_B2.tif"))
-        b3s = glob.glob(os.path.join(selected_scene, "*_B3.TIF")) + glob.glob(os.path.join(selected_scene, "*_B3.tif"))
-        b4s = glob.glob(os.path.join(selected_scene, "*_B4.TIF")) + glob.glob(os.path.join(selected_scene, "*_B4.tif"))
-        b10s = glob.glob(os.path.join(selected_scene, "*_B10.TIF")) + glob.glob(os.path.join(selected_scene, "*_B10.tif"))
-            
-        raw_b10 = read_tiff_array(b10s[0])
-        h_orig, w_orig = raw_b10.shape
-        h_100, w_100 = int(h_orig / 3.33), int(w_orig / 3.33)
-        h_200, w_200 = int(h_orig / 6.67), int(w_orig / 6.67)
-        
-        tir_100 = downsample_array(raw_b10, h_100, w_100)
-        tir_200_full = downsample_array(raw_b10, h_200, w_200)
-
-        if b2s and b3s and b4s:
-            raw_b2 = read_tiff_array(b2s[0])
-            raw_b3 = read_tiff_array(b3s[0])
-            raw_b4 = read_tiff_array(b4s[0])
-            
-            b2 = downsample_array(raw_b2, h_100, w_100)
-            b3 = downsample_array(raw_b3, h_100, w_100)
-            b4 = downsample_array(raw_b4, h_100, w_100)
-            rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
-        else:
-            rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
+            with rasterio.open(b10s[0]) as src:
+                h_100, w_100 = int(src.height / 3.33), int(src.width / 3.33)
+                tir_100 = src.read(1, out_shape=(h_100, w_100), resampling=Resampling.average)
                 
-        # Extract center crop
-        cy_200, cx_200 = h_200 // 2, w_200 // 2
-        cy_100, cx_100 = h_100 // 2, w_100 // 2
+                h_200, w_200 = int(src.height / 6.67), int(src.width / 6.67)
+                tir_200_full = src.read(1, out_shape=(h_200, w_200), resampling=Resampling.average)
+                
+            if b2s and b3s and b4s:
+                with rasterio.open(b2s[0]) as b2_src, \
+                     rasterio.open(b3s[0]) as b3_src, \
+                     rasterio.open(b4s[0]) as b4_src:
+                    h_rgb, w_rgb = int(b2_src.height / 3.33), int(b2_src.width / 3.33)
+                    b2 = b2_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
+                    b3 = b3_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
+                    b4 = b4_src.read(1, out_shape=(h_rgb, w_rgb), resampling=Resampling.average)
+                    rgb_100 = np.stack([b4, b3, b2], axis=0).astype(np.float32)
+            else:
+                rgb_100 = np.zeros((3, h_100, w_100), dtype=np.float32)
+                
+            # Extract center crop
+            cy_200, cx_200 = h_200 // 2, w_200 // 2
+            cy_100, cx_100 = h_100 // 2, w_100 // 2
             
-        tir_200 = tir_200_full[cy_200-128:cy_200+128, cx_200-128:cx_200+128]
-        tir_100_gt = tir_100[cy_100-256:cy_100+256, cx_100-256:cx_100+256]
-        rgb_100_gt = rgb_100[:, cy_100-256:cy_100+256, cx_100-256:cx_100+256]
+            tir_200 = tir_200_full[cy_200-128:cy_200+128, cx_200-128:cx_200+128]
+            tir_100_gt = tir_100[cy_100-256:cy_100+256, cx_100-256:cx_100+256]
+            rgb_100_gt = rgb_100[:, cy_100-256:cy_100+256, cx_100-256:cx_100+256]
             
-        # Boundary checks
-        if tir_200.shape != (256, 256):
+            # Boundary checks
+            if tir_200.shape != (256, 256):
+                tir_200 = np.zeros((256, 256), dtype=np.float32)
+            if tir_100_gt.shape != (512, 512):
+                tir_100_gt = np.zeros((512, 512), dtype=np.float32)
+            if rgb_100_gt.shape != (3, 512, 512):
+                rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
+                
+        except Exception as e:
+            st.sidebar.error(f"Error reading scene bands: {e}")
             tir_200 = np.zeros((256, 256), dtype=np.float32)
-        if tir_100_gt.shape != (512, 512):
             tir_100_gt = np.zeros((512, 512), dtype=np.float32)
-        if rgb_100_gt.shape != (3, 512, 512):
             rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
-                
-    except Exception as e:
-        st.sidebar.error(f"Error reading scene bands: {e}")
-        tir_200 = np.zeros((256, 256), dtype=np.float32)
-        tir_100_gt = np.zeros((512, 512), dtype=np.float32)
-        rgb_100_gt = np.zeros((3, 512, 512), dtype=np.float32)
 
 if tir_200 is not None:
     # Run Inference on the raw DN input
@@ -281,53 +257,40 @@ if tir_200 is not None:
     elif input_tensor.ndim == 3:
         input_tensor = input_tensor.unsqueeze(0)
     
-    img_max = float(tir_200.max())
-    scale_mode = "normalized" if img_max <= 1.0 else ("8bit" if img_max <= 255.0 else "16bit")
     with torch.no_grad():
-        sr_tir, decode_outs = pipeline(input_tensor, scale_mode=scale_mode)
-        
+        _t0 = time.perf_counter()
+        sr_tir, decode_outs = pipeline(input_tensor)
+        inference_ms = (time.perf_counter() - _t0) * 1000.0
+
     sr_np = sr_tir.squeeze().numpy()
     pred_rgb = decode_outs["dominant_color"].squeeze().numpy()
     within_var = decode_outs["within_mode_variance"].squeeze().numpy()
     between_var = decode_outs["between_mode_variance"].squeeze().numpy()
     entropy = decode_outs["entropy"].squeeze().numpy()
 
-    # Dynamic metrics display at the top
-    import json
-    psnr_val = None
-    ssim_val = None
-    
-    # Try to load dynamic metrics from generated JSON
-    metrics_paths = [
-        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics_val.json"),
-        os.path.join(root_dir, "experiments", "sutram_baseline", "metrics.json"),
-    ]
-    # Check if there are other metric files
-    for pattern in ["metrics_val.json", "metrics.json"]:
-        found = glob.glob(os.path.join(root_dir, "experiments", "*", pattern))
-        metrics_paths.extend(found)
-        
-    for m_path in metrics_paths:
-        if os.path.exists(m_path):
-            try:
-                with open(m_path, "r") as f:
-                    data = json.load(f)
-                    overall_dict = data.get("Overall")
-                    if isinstance(overall_dict, dict):
-                        psnr_val = overall_dict.get("psnr")
-                        ssim_val = overall_dict.get("ssim")
-                        if psnr_val is not None and ssim_val is not None:
-                            break
-                    elif "psnr" in data:
-                        psnr_val = data.get("psnr")
-                        ssim_val = data.get("ssim")
-                        if psnr_val is not None and ssim_val is not None:
-                            break
-            except Exception:
-                pass
-                
-    psnr_str = f"{psnr_val:.2f} dB" if psnr_val is not None else "Not Evaluated"
-    ssim_str = f"{ssim_val:.4f}" if ssim_val is not None else "Not Evaluated"
+    # Dynamic metrics display at the top.
+    # PSNR/SSIM come from the last evaluation run (experiments/<id>/metrics.json);
+    # the TIR temperature range is derived from the actual input via Planck
+    # calibration; inference time is measured from the real forward pass above.
+    reported_metrics = load_reported_metrics()
+
+    def _fmt(value, suffix="", fmt="{:.2f}"):
+        return (fmt.format(value) + suffix) if value is not None else "—"
+
+    psnr_str = _fmt(reported_metrics.get("psnr"), " dB")
+    ssim_str = _fmt(reported_metrics.get("ssim"), "", "{:.3f}")
+
+    # Brightness temperature range from raw thermal DN (robust 2/98 percentiles).
+    try:
+        bt = dn_to_brightness_temp(np.asarray(tir_200, dtype=np.float32))
+        bt = bt[np.isfinite(bt)]
+        if bt.size > 0:
+            bt_lo, bt_hi = np.percentile(bt, 2), np.percentile(bt, 98)
+            temp_str = f"{bt_lo:.0f}K - {bt_hi:.0f}K"
+        else:
+            temp_str = "—"
+    except Exception:
+        temp_str = "—"
 
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
@@ -335,9 +298,12 @@ if tir_200 is not None:
     with col_b:
         st.markdown(f'<div class="metric-card"><div class="metric-title">Validation SSIM</div><div class="metric-value">{ssim_str}</div></div>', unsafe_allow_html=True)
     with col_c:
-        st.markdown('<div class="metric-card"><div class="metric-title">TIR Temp. Range</div><div class="metric-value">280K - 315K</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">TIR Temp. Range</div><div class="metric-value">{temp_str}</div></div>', unsafe_allow_html=True)
     with col_d:
-        st.markdown('<div class="metric-card"><div class="metric-title">Inference Time</div><div class="metric-value">12.4 ms</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-title">Inference Time</div><div class="metric-value">{inference_ms:.1f} ms</div></div>', unsafe_allow_html=True)
+
+    if not reported_metrics:
+        st.caption("PSNR/SSIM show “—” until you run `python cli.py evaluate` to generate experiments/sutram_baseline/metrics.json.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -358,7 +324,7 @@ if tir_200 is not None:
         with col3:
             # Transpose to (H,W,C) for visualization
             pred_rgb_viz = np.moveaxis(pred_rgb, 0, -1)
-            st.image(percentile_stretch(pred_rgb_viz), caption="Probabilistic Colour Mixture (100m)", width="stretch")
+            st.image(percentile_stretch(pred_rgb_viz), caption="SUTRAM Synthesized Colorized RGB (100m)", width="stretch")
         with col4:
             rgb_gt_viz = np.moveaxis(rgb_100_gt, 0, -1)
             st.image(percentile_stretch(rgb_gt_viz), caption="SUTRAM Final RGB Output(100m)", width="stretch")
@@ -376,9 +342,9 @@ if tir_200 is not None:
         st.write("---")
         st.write("### Confident-Abstention Masking")
         # Abstain if total variance exceeds threshold
-        total_var = (within_var + between_var).mean(axis=0) if within_var.ndim == 3 else (within_var + between_var)
-        norm_var_255 = percentile_stretch(total_var)
-        normalized_var = norm_var_255.astype(np.float32) / 255.0
+        total_var = within_var + between_var
+        max_v = total_var.max() if total_var.max() > 0 else 1.0
+        normalized_var = total_var / max_v
         
         abstain_mask = normalized_var > confidence_threshold
         
@@ -396,21 +362,30 @@ if tir_200 is not None:
 
     with tab3:
         st.write("### Model Execution & Performance Profile")
+
+        # Real parameter counts from the actually-loaded pipeline (not hardcoded).
+        bb_params = sum(p.numel() for p in pipeline.backbone.parameters())
+        sr_params = sum(p.numel() for p in pipeline.sr_head.parameters())
+        mix_params = sum(p.numel() for p in pipeline.mixture_head.parameters())
+        total_params = bb_params + sr_params + mix_params
+
         col_bench1, col_bench2 = st.columns(2)
         with col_bench1:
             st.info("💡 **Performance Note:** The inference pipeline utilizes a shared ResNet encoder and two lightweight task-specific decoders. Normalization scales are computed dynamically in PyTorch FP32 precision to prevent numerical truncation.")
-            st.markdown("""
-            - **Backbone parameters:** ~2.5M (Sized for single-band TIR density)
-            - **SR Head parameters:** ~0.3M (Fast PixelShuffle refinement)
-            - **Mixture Head parameters:** ~0.5M (Logistic Mixture distribution)
+            st.markdown(f"""
+            - **Backbone parameters:** {bb_params:,} (Sized for single-band TIR density)
+            - **SR Head parameters:** {sr_params:,} (Fast PixelShuffle refinement)
+            - **Mixture Head parameters:** {mix_params:,} (Logistic Mixture distribution)
             - **Precision Mode:** Float32 (Required for discretization bins NLL loss)
             - **Device:** CPU/GPU compatible
             """)
         with col_bench2:
             st.json({
-                "Backbone parameters": "2,485,344",
-                "SR Head parameters": "312,416",
-                "Mixture Head parameters": "489,642",
+                "Backbone parameters": f"{bb_params:,}",
+                "SR Head parameters": f"{sr_params:,}",
+                "Mixture Head parameters": f"{mix_params:,}",
+                "Total parameters": f"{total_params:,}",
+                "Measured inference latency": f"{inference_ms:.1f} ms (this scene, CPU)",
                 "Precision Mode": "Float32 (Decode Submodule)",
                 "Host Device": "PyTorch CPU Inference Model"
             })
