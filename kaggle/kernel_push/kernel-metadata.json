@@ -1,0 +1,14 @@
+{
+  "id": "vaibhavverma2115/sutram-v3-train",
+  "title": "sutram-v3-train",
+  "code_file": "sutram_cloud_train.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["vaibhavverma2115/sutram-v3-bundle"],
+  "competition_sources": [],
+  "kernel_sources": []
+}
