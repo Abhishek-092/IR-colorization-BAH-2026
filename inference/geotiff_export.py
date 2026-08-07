@@ -1,8 +1,6 @@
 import os
 import logging
 import rasterio
-import numpy as np
-import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +12,6 @@ def export_sr_geotiff(sr_array, reference_tif_path, output_path):
     
     with rasterio.open(reference_tif_path) as ref:
         profile = ref.profile.copy()
-        
-        # Determine nodata mask from raw input B10
-        ref_data = ref.read(1)
-        nodata_val = ref.nodata if ref.nodata is not None else 0
-        nodata_mask = (ref_data == nodata_val)
-        
         # Update profile for 2x upscaled spatial resolution
         # Double the width and height
         new_height = ref.height * 2
@@ -37,18 +29,8 @@ def export_sr_geotiff(sr_array, reference_tif_path, output_path):
             'width': new_width,
             'transform': new_transform,
             'count': 1,
-            'dtype': str(sr_array.dtype),
-            'nodata': 0
+            'dtype': str(sr_array.dtype)
         })
-
-    # Resize nodata mask to match new resolution
-    mask_2x = cv2.resize(nodata_mask.astype(np.uint8), (new_width, new_height), interpolation=cv2.INTER_NEAREST).astype(bool)
-    
-    # Zero out nodata pixels in the super-resolved array to prevent boundary bleeding
-    if sr_array.ndim == 3:
-        sr_array[0, mask_2x] = 0
-    else:
-        sr_array[mask_2x] = 0
 
     with rasterio.open(output_path, 'w', **profile) as dst:
         # Write to band 1
@@ -59,10 +41,18 @@ def export_sr_geotiff(sr_array, reference_tif_path, output_path):
 def export_colorized_geotiff(color_array, reference_tif_path, output_path):
     """
     Saves a 3-channel colorized array as a georeferenced GeoTIFF.
-    Mandatory Band Ordering (BGR):
-    - Layer 1 / Band 1: Blue
-    - Layer 2 / Band 2: Green
-    - Layer 3 / Band 3: Red
+
+    INPUT is the model's RGB output — channel 0 = Red, 1 = Green, 2 = Blue
+    (the mixture head is trained on targets stacked as [B4=R, B3=G, B2=B] in
+    data_pipeline/prepare_dataset.py, so its decoded colour is RGB).
+
+    OUTPUT file uses the mandatory submission Band Ordering (BGR):
+    - Band 1: Blue   (<- input channel 2)
+    - Band 2: Green  (<- input channel 1)
+    - Band 3: Red    (<- input channel 0)
+
+    The RGB->BGR reorder happens HERE so the rest of the pipeline (training,
+    dashboard) can stay in natural RGB while the deliverable is spec-correct.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
@@ -71,12 +61,6 @@ def export_colorized_geotiff(color_array, reference_tif_path, output_path):
         
     with rasterio.open(reference_tif_path) as ref:
         profile = ref.profile.copy()
-        
-        # Determine nodata mask from raw input B10
-        ref_data = ref.read(1)
-        nodata_val = ref.nodata if ref.nodata is not None else 0
-        nodata_mask = (ref_data == nodata_val)
-        
         # Update profile for 2x upscaled spatial resolution
         new_height = ref.height * 2
         new_width = ref.width * 2
@@ -93,23 +77,13 @@ def export_colorized_geotiff(color_array, reference_tif_path, output_path):
             'transform': new_transform,
             'count': 3,
             'dtype': str(color_array.dtype),
-            'photometric': 'rgb',  # tells viewers it's a multi-band image
-            'nodata': 0
+            'photometric': 'rgb'  # tells viewers it's a multi-band image
         })
 
-    # Resize nodata mask to match new resolution
-    mask_2x = cv2.resize(nodata_mask.astype(np.uint8), (new_width, new_height), interpolation=cv2.INTER_NEAREST).astype(bool)
-    
-    # Zero out nodata pixels in all 3 channels to prevent boundary bleeding
-    for c in range(3):
-        color_array[c, mask_2x] = 0
-
     with rasterio.open(output_path, 'w', **profile) as dst:
-        # Write channel 2 (Blue) to Band 1
-        dst.write(color_array[2], 1)
-        # Write channel 1 (Green) to Band 2
-        dst.write(color_array[1], 2)
-        # Write channel 0 (Red) to Band 3
-        dst.write(color_array[0], 3)
-        
+        # Reorder RGB -> BGR on write (submission spec):
+        dst.write(color_array[2], 1)   # Blue  (input ch 2) -> Band 1
+        dst.write(color_array[1], 2)   # Green (input ch 1) -> Band 2
+        dst.write(color_array[0], 3)   # Red   (input ch 0) -> Band 3
+
     logger.info(f"Successfully saved BGR colorized GeoTIFF to {output_path}")
