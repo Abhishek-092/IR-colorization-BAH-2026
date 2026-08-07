@@ -1,37 +1,37 @@
-# 🛰️ Project SUTRAM (Bharatiya Antriksh Hackathon 2026)
+# Project SUTRAM (Bharatiya Antriksh Hackathon 2026)
 ## Satellite Uncertainty-aware Thermal Reconstruction through Ambiguity Modeling
 
 > [!IMPORTANT]
-> **🚀 Hackathon Deliverables Access:**  
-> All final model weights, exported ONNX graphs, compiled Sample Results PDF, and the technical report can be downloaded directly from the official:  
+> **Hackathon Deliverables Access:**  
+> Final model weights, exported ONNX graphs, compiled Sample Results PDF, and technical reports are available in the:  
 > **[Google Drive Deliverables Folder](https://drive.google.com/drive/folders/1lSVZ4rHBjztUMhYd5s8J_ZKSJkIPtzXt?usp=sharing)**
 
-Project SUTRAM is a high-performance deep learning pipeline designed for **Thermal-to-Optical cross-spectral translation and spatial super-resolution** using Landsat-9 TIRS-2 and OLI observations.
+Project SUTRAM is a deep learning pipeline for **Thermal-to-Optical cross-spectral translation and spatial super-resolution** using Landsat-9 TIRS-2 and OLI observations.
 
 ---
 
-## 📖 Table of Contents
-1. [Overview & Concept](#-overview--concept)
-2. [Scientific Architecture](#-scientific-architecture)
-3. [Key Performance Results](#-key-performance-results)
-4. [Installation & Setup](#-installation--setup)
-5. [Workflow Execution Guide](#-workflow-execution-guide)
-6. [Interactive Web UI](#-interactive-web-ui)
-7. [Repository Directory Structure](#-repository-directory-structure)
+## Table of Contents
+1. [Overview & Concept](#overview--concept)
+2. [Scientific Architecture](#scientific-architecture)
+3. [Key Performance Results](#key-performance-results)
+4. [Installation & Setup](#installation--setup)
+5. [Workflow Execution Guide](#workflow-execution-guide)
+6. [Interactive Web UI](#interactive-web-ui)
+7. [Repository Directory Structure](#repository-directory-structure)
 
 ---
 
-## 🌐 Overview & Concept
+## Overview & Concept
 
 Thermal Infrared (TIR) observations are crucial for monitoring land surface temperatures, volcanic activity, and urban heat islands. However, due to raw sensor aperture limitations, TIR bands are acquired at coarser spatial resolutions (100m–200m native) compared to visible/reflective bands (30m native). 
 
-**SUTRAM** solves this resolution and representation gap through:
+**SUTRAM** addresses this resolution gap through:
 1. **Phased Spatial Super-Resolution (200m → 100m)** utilizing a sub-pixel convolution upsampling head with residual thermal skip links.
 2. **Discretized Logistic Mixture Colorization (100m TIR → 100m OLI RGB)** to predict optical reflectance distributions while modeling sub-pixel material ambiguity.
 
 ---
 
-## 🔬 Scientific Architecture
+## Scientific Architecture
 
 The model utilizes a shared **ResNet feature encoder** coupled with two task-specific heads:
 *   **SR Head (Stage 1):** Takes features from the backbone to predict high-resolution thermal structures. Includes a residual bypass mapping that scales and sums bilinearly-upsampled inputs directly to the output:
@@ -40,18 +40,18 @@ The model utilizes a shared **ResNet feature encoder** coupled with two task-spe
 
 ---
 
-## 📈 Key Performance Results
+## Key Performance Results
 
-All metrics were validated on the official Landsat-9 validation scene partition:
-*   **PSNR:** **`26.90 dB`** (Highly consistent structural restoration)
-*   **SSIM (Corrected):** **`0.7652`** (True mathematical structural similarity)
-*   **Sparsification AUC:** **`0.6108`** (Optimal pixel-level uncertainty ranking)
-*   **Expected Calibration Error (ECE):** **`0.1263`** (Well-calibrated predictive probabilities)
-*   **CPU Inference Latency:** **`12.4 ms`** (Statically compiled ONNX execution graph)
+The metrics below are baseline figures generated from held-out validation scenes (`configs/data.yaml` splits) via `python cli.py evaluate`:
+*   **PSNR:** **`26.90 dB`** (structural restoration quality)
+*   **SSIM:** **`0.7652`** (structural similarity)
+*   **Sparsification AUC:** **`0.6108`** (pixel-level uncertainty ranking)
+*   **Expected Calibration Error (ECE):** **`0.1263`** (predictive-probability calibration)
+*   **CPU Inference Latency:** **`12.4 ms`** (`python cli.py benchmark`)
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 Ensure you have a Python environment (3.10+) configured:
 ```bash
@@ -65,7 +65,7 @@ pip install -r pyproject.toml
 
 ---
 
-## 🚀 Workflow Execution Guide
+## Workflow Execution Guide
 
 SUTRAM uses a unified Command Line Interface (`cli.py`) to manage training and inference tasks:
 
@@ -101,16 +101,16 @@ python cli.py infer --weights checkpoints/sutram_final.pth --input input/LC09_L2
 
 ---
 
-## 🖥️ Interactive Web UI
+## Interactive Web UI
 
-SUTRAM includes a premium Streamlit dashboard to visually inspect inputs, outputs, and radiometric noise uncertainty maps:
+SUTRAM includes a Web UI to inspect inputs, outputs, and uncertainty maps:
 ```bash
 streamlit run demo/streamlit_app.py
 ```
 
 ---
 
-## 📂 Repository Directory Structure
+## Repository Directory Structure
 
 ```
 .
