@@ -1,0 +1,14 @@
+{
+  "id": "vaibhavverma2115/sutram-t1-train",
+  "title": "sutram-t1-train",
+  "code_file": "sutram_t1_train.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["vaibhavverma2115/sutram-v3-bundle", "vaibhavverma2115/sutram-t1"],
+  "competition_sources": [],
+  "kernel_sources": []
+}
