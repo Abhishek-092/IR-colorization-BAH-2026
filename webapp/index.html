@@ -1,0 +1,688 @@
+<title>SUTRAM · AI Satellite Image Reconstruction</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* ===================================================================
+     SUTRAM mission-control dashboard — deliberate dark telemetry theme.
+     Palette, type and layout follow the design plan: deep-space ground,
+     instrument cyan accent, thermal amber for thermal chrome, monospace
+     for all numeric telemetry.
+     =================================================================== */
+  :root{
+    --ground:#070b12; --panel:#0e1621; --panel-2:#111d2b; --raise:#152435;
+    --line:#1d2a3c; --line-2:#26374d;
+    --text:#e7eef7; --muted:#8496ab; --faint:#5d6e85;
+    --cyan:#37d2df; --cyan-dim:#1c8b95; --amber:#ff9d3c;
+    --good:#3fb950; --warn:#d6a336; --bad:#f0603f;
+    --veg:#3fa34d; --water:#2f6fed; --road:#8b95a4; --urban:#b3541e; --soil:#d8c69c;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --r:14px; --r-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 78% -8%, rgba(55,210,223,.07), transparent 60%),
+      radial-gradient(900px 500px at 5% 0%, rgba(255,157,60,.05), transparent 55%),
+      var(--ground);
+    color:var(--text); font-family:var(--sans); line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1220px; margin:0 auto; padding:0 20px 80px}
+  .mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  h1,h2,h3{margin:0; text-wrap:balance}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--cyan); font-weight:600}
+
+  /* ---- Header ---- */
+  header.top{
+    position:sticky; top:0; z-index:40; backdrop-filter:blur(10px);
+    background:linear-gradient(180deg, rgba(7,11,18,.94), rgba(7,11,18,.82));
+    border-bottom:1px solid var(--line);
+  }
+  .top-in{max-width:1220px; margin:0 auto; padding:12px 20px;
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:12px}
+  .sat{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--cyan-dim),#0b3a40);
+    border:1px solid #2b6b72; font-size:18px}
+  .brand b{font-size:19px; letter-spacing:.14em}
+  .brand small{display:block; color:var(--muted); font-size:11px; letter-spacing:.04em;
+    font-family:var(--mono)}
+  .top-spacer{flex:1}
+  .status{display:flex; align-items:center; gap:8px; font-family:var(--mono);
+    font-size:12.5px; color:var(--muted);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+    background:var(--panel)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--good);
+    box-shadow:0 0 0 0 rgba(63,185,80,.6); animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.5)}70%{box-shadow:0 0 0 7px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+  .specbar{display:flex; gap:0; flex-wrap:wrap; border-top:1px solid var(--line);
+    max-width:1220px; margin:0 auto}
+  .specbar .cell{flex:1 1 160px; padding:9px 20px; border-right:1px solid var(--line);
+    font-family:var(--mono); font-size:12.5px}
+  .specbar .cell:last-child{border-right:none}
+  .specbar .k{color:var(--faint); text-transform:uppercase; letter-spacing:.12em; font-size:10px}
+  .specbar .v{color:var(--text); font-weight:600}
+
+  .actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:16px}
+  button{font-family:var(--sans); cursor:pointer; border:none; border-radius:var(--r-sm)}
+  .btn{padding:10px 16px; font-size:14px; font-weight:600; letter-spacing:.02em;
+    background:var(--raise); color:var(--text); border:1px solid var(--line-2);
+    display:inline-flex; align-items:center; gap:8px; transition:.15s}
+  .btn:hover{border-color:var(--cyan-dim); background:#18293a}
+  .btn.primary{background:linear-gradient(135deg,var(--cyan),#1aaeb9); color:#032023;
+    border-color:transparent; box-shadow:0 6px 22px -8px rgba(55,210,223,.6); font-weight:700}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+
+  /* ---- Panels / grid ---- */
+  section.panel{background:linear-gradient(180deg,var(--panel),#0b131d);
+    border:1px solid var(--line); border-radius:var(--r); padding:20px; margin-top:16px}
+  .panel > .head{display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-bottom:14px}
+  .panel h2{font-size:15px; letter-spacing:.03em; display:flex; align-items:center; gap:10px}
+  .grid{display:grid; gap:16px}
+  @media(min-width:900px){
+    .two{grid-template-columns:340px 1fr}
+    .three{grid-template-columns:repeat(3,1fr)}
+    .split{grid-template-columns:1fr 1fr}
+  }
+
+  /* ---- Scene info ---- */
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:7px 14px; font-family:var(--mono);
+    font-size:13px}
+  .kv .k{color:var(--faint)}
+  .kv .v{color:var(--text); text-align:right; font-weight:600}
+
+  /* ---- Upload ---- */
+  .drop{border:1.5px dashed var(--line-2); border-radius:var(--r-sm); padding:26px 18px;
+    text-align:center; color:var(--muted); transition:.15s; background:rgba(255,255,255,.012)}
+  .drop.drag{border-color:var(--cyan); background:rgba(55,210,223,.06); color:var(--text)}
+  .drop b{color:var(--text)}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+  .chip{font-family:var(--mono); font-size:12px; padding:7px 11px; border-radius:999px;
+    border:1px solid var(--line-2); background:var(--panel-2); color:var(--muted); cursor:pointer}
+  .chip:hover{border-color:var(--cyan-dim); color:var(--text)}
+  .chip.active{background:rgba(55,210,223,.14); border-color:var(--cyan); color:var(--text)}
+  .fmt{font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:10px}
+  .fmt span{border:1px solid var(--line); border-radius:5px; padding:2px 7px; margin-right:6px}
+
+  /* ---- Canvas frames ---- */
+  .frame{position:relative; border:1px solid var(--line); border-radius:var(--r-sm);
+    overflow:hidden; background:#05090f; aspect-ratio:1/1}
+  .frame canvas{display:block; width:100%; height:100%}
+  .frame .tag{position:absolute; top:8px; left:8px; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--text);
+    background:rgba(5,9,15,.72); border:1px solid var(--line-2); padding:3px 8px; border-radius:5px; z-index:2}
+  .frame.thermal .tag{color:var(--amber)}
+  .readout{position:absolute; bottom:8px; left:8px; right:8px; font-family:var(--mono);
+    font-size:11.5px; color:var(--text); background:rgba(5,9,15,.72);
+    border:1px solid var(--line); border-radius:6px; padding:5px 9px;
+    display:flex; gap:14px; flex-wrap:wrap; pointer-events:none; z-index:2}
+  .readout .rk{color:var(--faint)}
+  .empty{position:absolute; inset:0; display:grid; place-items:center; color:var(--faint);
+    font-family:var(--mono); font-size:12px; text-align:center; padding:20px}
+
+  .card{background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:14px}
+  .card .ct{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--cyan); margin-bottom:10px}
+  .meta-row{display:flex; justify-content:space-between; font-family:var(--mono); font-size:12.5px;
+    padding:4px 0; border-bottom:1px dashed var(--line)}
+  .meta-row:last-child{border-bottom:none}
+  .meta-row .mk{color:var(--faint)} .meta-row .mv{color:var(--text); font-weight:600}
+  .pill{font-family:var(--mono); font-size:11px; padding:2px 9px; border-radius:999px;
+    background:rgba(63,185,80,.16); color:#7fe08a; border:1px solid rgba(63,185,80,.3)}
+
+  /* ---- Legend ---- */
+  .legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+  .lg{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block; border:1px solid rgba(255,255,255,.15)}
+
+  /* ---- Pipeline animation ---- */
+  .pipe{display:flex; flex-direction:column; gap:0}
+  .stage{display:flex; align-items:center; gap:14px; padding:11px 14px; border:1px solid var(--line);
+    border-radius:var(--r-sm); background:var(--panel-2); opacity:.5; transition:.35s}
+  .stage.on{opacity:1; border-color:var(--cyan-dim); background:#122536;
+    box-shadow:0 0 0 1px rgba(55,210,223,.25) inset}
+  .stage.done{opacity:1}
+  .stage .num{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;
+    font-family:var(--mono); font-size:12px; border:1px solid var(--line-2); color:var(--muted)}
+  .stage.on .num{border-color:var(--cyan); color:var(--cyan)}
+  .stage.done .num{background:var(--good); border-color:var(--good); color:#04140a; font-weight:700}
+  .stage .sname{font-weight:600; font-size:14px}
+  .stage .salgo{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
+  .stage .stime{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .arrow{height:12px; width:1px; background:var(--line-2); margin:2px 0 2px 26px}
+
+  /* ---- Slider compare ---- */
+  .compare{position:relative; border:1px solid var(--line); border-radius:var(--r-sm);
+    overflow:hidden; aspect-ratio:16/10; background:#05090f; user-select:none; touch-action:none}
+  .compare canvas{position:absolute; inset:0; width:100%; height:100%}
+  .compare .top-layer{clip-path:inset(0 0 0 50%)}
+  .compare .divider{position:absolute; top:0; bottom:0; left:50%; width:2px; background:var(--cyan);
+    transform:translateX(-1px); box-shadow:0 0 12px rgba(55,210,223,.7)}
+  .compare .knob{position:absolute; top:50%; left:50%; width:34px;height:34px; transform:translate(-50%,-50%);
+    border-radius:50%; background:var(--ground); border:2px solid var(--cyan); display:grid; place-items:center;
+    color:var(--cyan); font-family:var(--mono); cursor:ew-resize; z-index:3}
+  .compare .lbl{position:absolute; bottom:10px; font-family:var(--mono); font-size:11px; color:var(--text);
+    background:rgba(5,9,15,.7); padding:3px 8px; border-radius:5px; border:1px solid var(--line); z-index:2}
+
+  /* ---- Inspector ---- */
+  .insp-grid{display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-family:var(--mono); font-size:13px}
+  .insp-grid .k{color:var(--faint)} .insp-grid .v{text-align:right; font-weight:600}
+  .rgbchip{display:inline-block; width:13px;height:13px;border-radius:3px; vertical-align:-2px;
+    margin-right:6px; border:1px solid rgba(255,255,255,.2)}
+  .bar{height:8px; border-radius:6px; background:var(--raise); overflow:hidden}
+  .bar > i{display:block; height:100%; background:linear-gradient(90deg,var(--cyan-dim),var(--cyan))}
+  .dist-row{display:grid; grid-template-columns:90px 1fr 46px; gap:10px; align-items:center;
+    font-family:var(--mono); font-size:12.5px; margin:7px 0}
+
+  /* ---- Metrics tiles ---- */
+  .tiles{display:grid; gap:12px; grid-template-columns:repeat(2,1fr)}
+  @media(min-width:720px){.tiles{grid-template-columns:repeat(3,1fr)}}
+  .tile{background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:14px 16px}
+  .tile .tk{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+  .tile .tv{font-family:var(--mono); font-size:26px; font-weight:700; margin-top:6px}
+  .tile .tu{font-size:13px; color:var(--muted); font-weight:400}
+
+  /* ---- Explorer ---- */
+  .exp{display:grid; gap:14px}
+  @media(min-width:900px){.exp{grid-template-columns:260px 1fr}}
+  .exp .stages{display:flex; flex-direction:column; gap:8px}
+  .exp .es{padding:10px 12px; border:1px solid var(--line); border-radius:var(--r-sm);
+    background:var(--panel-2); cursor:pointer; font-size:13.5px; display:flex; gap:10px; align-items:center}
+  .exp .es .en{font-family:var(--mono); color:var(--faint); font-size:12px}
+  .exp .es.active{border-color:var(--cyan); background:#122536}
+  .exp .detail{border:1px solid var(--line); border-radius:var(--r-sm); padding:16px; background:var(--panel-2)}
+  .exp .io{display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-bottom:14px}
+  .exp .io .ar{color:var(--cyan); font-family:var(--mono); font-size:22px; text-align:center}
+  .exp .io .cap{font-family:var(--mono); font-size:10.5px; color:var(--faint); text-align:center; margin-top:5px;
+    text-transform:uppercase; letter-spacing:.1em}
+
+  /* ---- Export ---- */
+  .export-row{display:flex; flex-wrap:wrap; gap:14px; align-items:center}
+  label.ck{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:13px; color:var(--muted); cursor:pointer}
+  label.ck input{accent-color:var(--cyan); width:16px; height:16px}
+
+  .note{font-family:var(--mono); font-size:11.5px; color:var(--faint); margin-top:10px}
+  .hidden{display:none !important}
+  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:var(--raise); border:1px solid var(--line-2); color:var(--text);
+    padding:11px 18px; border-radius:10px; font-family:var(--mono); font-size:13px; z-index:80;
+    box-shadow:0 12px 40px -12px rgba(0,0,0,.7); opacity:0; transition:.25s; pointer-events:none}
+  .toast.show{opacity:1}
+  a{color:var(--cyan)}
+  :focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+  @media(prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+</style>
+
+<!-- ============================== HEADER ============================== -->
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <div class="sat">🛰</div>
+      <div><b>SUTRAM</b><small id="brandSub">Physics-Aware Thermal Super-Resolution &amp; RGB Synthesis</small></div>
+    </div>
+    <div class="top-spacer"></div>
+    <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></div>
+  </div>
+  <div class="specbar">
+    <div class="cell"><div class="k">Version</div><div class="v mono" id="hVersion">—</div></div>
+    <div class="cell"><div class="k">Model</div><div class="v mono" id="hModel">—</div></div>
+    <div class="cell"><div class="k">Parameters</div><div class="v mono" id="hParams">—</div></div>
+    <div class="cell"><div class="k">Mixture K</div><div class="v mono" id="hK">—</div></div>
+    <div class="cell"><div class="k">Device</div><div class="v mono" id="hDevice">—</div></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="actions">
+    <button class="btn" id="btnUpload">⬆ Upload Scene</button>
+    <button class="btn" id="btnDemo">🗂 Demo Dataset</button>
+    <button class="btn primary" id="btnRunTop">▶ Run Model</button>
+    <input type="file" id="fileInput" accept=".tif,.tiff,.png,.jpg,.jpeg" class="hidden" />
+  </div>
+
+  <!-- ===================== SCENE + UPLOAD ===================== -->
+  <div class="grid two" style="margin-top:16px">
+    <section class="panel" style="margin-top:0">
+      <div class="head"><h2><span class="eyebrow">01</span>Scene Information</h2></div>
+      <div class="kv" id="sceneKV">
+        <div class="k">Satellite</div><div class="v">—</div>
+        <div class="k">Sensor</div><div class="v">—</div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:0">
+      <div class="head"><h2><span class="eyebrow">02</span>Upload Thermal Image</h2></div>
+      <div class="drop" id="drop">
+        <div style="font-size:26px">🌡️</div>
+        <div><b>Drag &amp; drop GeoTIFF</b></div>
+        <div style="margin:4px 0">or</div>
+        <button class="btn" id="browseBtn" style="margin-top:2px">Browse files</button>
+        <div class="fmt"><span>GeoTIFF</span><span>TIFF</span><span>PNG</span> single-band thermal (Band 10)</div>
+      </div>
+      <div style="margin-top:14px" class="eyebrow">Demo scenes — real Landsat-9 thermal tiles</div>
+      <div class="chips" id="sceneChips"></div>
+    </section>
+  </div>
+
+  <!-- ===================== ORIGINAL THERMAL ===================== -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">03</span>Original Thermal</h2>
+      <span class="mono" style="color:var(--faint); font-size:12px" id="thermalHint">Select a scene or upload to begin</span></div>
+    <div class="grid" style="grid-template-columns:1fr; max-width:520px; margin:0 auto">
+      <div class="frame thermal" id="thermalFrame">
+        <span class="tag">Thermal · Band 10</span>
+        <canvas id="thermalCanvas" width="256" height="256"></canvas>
+        <div class="empty" id="thermalEmpty">No scene loaded</div>
+        <div class="readout hidden" id="thermalReadout">
+          <span><span class="rk">X</span> <b id="thX">—</b></span>
+          <span><span class="rk">Y</span> <b id="thY">—</b></span>
+          <span><span class="rk">Temp</span> <b id="thT">—</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== RUN ===================== -->
+  <section class="panel" style="text-align:center">
+    <button class="btn primary" id="btnRun" style="font-size:17px; padding:15px 40px" disabled>▶ RUN SUTRAM</button>
+    <div class="note" id="runNote">Load a scene, then run the physics-aware pipeline.</div>
+  </section>
+
+  <!-- ===================== PIPELINE ANIMATION ===================== -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">04</span>Processing Pipeline</h2>
+      <span class="mono" id="pipeTotal" style="color:var(--faint); font-size:12px"></span></div>
+    <div class="pipe" id="pipe"></div>
+  </section>
+
+  <!-- ================= SUPER-RESOLUTION COMPARISON ================= -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">05</span>Super-Resolution Comparison</h2>
+      <span class="mono" style="color:var(--faint);font-size:12px">Drag · 200 m input vs 100 m super-resolved</span></div>
+    <div class="compare" id="srCompare">
+      <canvas id="srCmpBase" class="base"></canvas>
+      <canvas id="srCmpTop" class="top-layer"></canvas>
+      <div class="lbl" style="left:10px">Input · 200 m (coarse)</div>
+      <div class="lbl" style="right:10px">Super-Resolved · 100 m</div>
+      <div class="divider" id="srCmpDivider"></div>
+      <div class="knob" id="srCmpKnob">⇆</div>
+    </div>
+    <div class="note">Same thermal field, left rendered at the native 200 m sampling (blocky), right reconstructed to 100 m by the SR head (×2). Drag to reveal the recovered detail.</div>
+  </section>
+
+  <!-- ================= GROUND TRUTH DEMO (demo scene only) ================= -->
+  <section class="panel" id="gtPanel" style="display:none">
+    <div class="head"><h2><span class="eyebrow">06</span>Reconstruction vs Ground Truth</h2>
+      <span class="mono" style="color:var(--faint);font-size:12px">Drag the divider</span></div>
+    <div class="compare" id="gtCompare">
+      <canvas id="gtCmpBase" class="base"></canvas>
+      <canvas id="gtCmpTop" class="top-layer"></canvas>
+      <div class="lbl" style="left:10px">Ground Reconstruction · model</div>
+      <div class="lbl" style="right:10px">Ground Truth · RGB</div>
+      <div class="divider" id="gtCmpDivider"></div>
+      <div class="knob" id="gtCmpKnob">⇆</div>
+    </div>
+    <div class="note">The model's fused ground reconstruction (left) against the true optical colour of the same scene (right).</div>
+  </section>
+
+  <!-- ===================== COMPARE ===================== -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">07</span>Interactive Comparison</h2>
+      <span class="mono" style="color:var(--faint);font-size:12px">Drag the divider</span></div>
+    <div class="compare" id="compare">
+      <canvas id="cmpBase" class="base"></canvas>
+      <canvas id="cmpTop" class="top-layer"></canvas>
+      <div class="lbl" style="left:10px">Original Thermal</div>
+      <div class="lbl" style="right:10px">Final Prediction</div>
+      <div class="divider" id="cmpDivider"></div>
+      <div class="knob" id="cmpKnob">⇆</div>
+    </div>
+  </section>
+
+  <!-- ===================== MODEL INFO ===================== -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">08</span>Model Information</h2></div>
+    <div class="grid" style="grid-template-columns:repeat(2,1fr); gap:8px 40px">
+      <div class="meta-row"><span class="mk">Model</span><span class="mv" id="miName">—</span></div>
+      <div class="meta-row"><span class="mk">Encoder</span><span class="mv" id="miEnc">—</span></div>
+      <div class="meta-row"><span class="mk">Mixture Components</span><span class="mv" id="miK">—</span></div>
+      <div class="meta-row"><span class="mk">Precision</span><span class="mv" id="miPrec">—</span></div>
+      <div class="meta-row"><span class="mk">Parameters</span><span class="mv" id="miParams">—</span></div>
+      <div class="meta-row"><span class="mk">Device</span><span class="mv" id="miDev">—</span></div>
+    </div>
+  </section>
+
+  <!-- ===================== EXPORT ===================== -->
+  <section class="panel">
+    <div class="head"><h2><span class="eyebrow">09</span>Export</h2></div>
+    <div class="export-row">
+      <label class="ck"><input type="checkbox" value="thermal_input" checked>Input (Thermal)</label>
+      <label class="ck"><input type="checkbox" value="super_resolution" checked>Super Resolution</label>
+      <label class="ck"><input type="checkbox" value="synth_rgb" checked>Synthesized RGB</label>
+      <label class="ck"><input type="checkbox" value="final_prediction" checked>Final Prediction</label>
+      <label class="ck"><input type="checkbox" value="reconstruction" checked>Ground Reconstruction</label>
+      <label class="ck"><input type="checkbox" value="uncertainty">Uncertainty</label>
+      <label class="ck"><input type="checkbox" value="report" checked>Report (.html)</label>
+      <button class="btn primary" id="btnDownload" style="margin-left:auto" disabled>⬇ Download</button>
+    </div>
+  </section>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   SUTRAM dashboard client — talks to the real Flask inference
+   backend. No mock data: every pixel and number comes from
+   /api/health, /api/scenes and /api/infer.
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+let HEALTH=null, SCENES=[], SELECTED=null, PENDING_FILE=null, RESULT=null, GRIDS=null, CLASSES=[];
+
+function toast(msg){const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600);}
+
+/* ---- base64 -> typed arrays ---- */
+function b64bytes(b64){const bin=atob(b64); const n=bin.length; const u=new Uint8Array(n);
+  for(let i=0;i<n;i++)u[i]=bin.charCodeAt(i); return u;}
+function decodeGrids(g){const f=b=>new Float32Array(b64bytes(b).buffer);
+  return {size:g.size, temperature:f(g.temperature), confidence:f(g.confidence),
+          entropy:f(g.entropy), rgb:b64bytes(g.rgb), label:b64bytes(g.label)};}
+
+/* ---- draw a data-URI image into a canvas ---- */
+function drawImg(canvasId, dataUri){return new Promise(res=>{
+  const c=$('#'+canvasId), ctx=c.getContext('2d'); const im=new Image();
+  im.onload=()=>{ctx.imageSmoothingEnabled=(c.id!=='thermalCanvas'); ctx.clearRect(0,0,c.width,c.height);
+    ctx.drawImage(im,0,0,c.width,c.height); const e=c.parentElement.querySelector('.empty'); if(e)e.style.display='none'; res();};
+  im.src=dataUri;});}
+
+/* =================== PIPELINE STAGE DEFS =================== */
+const STAGES=[
+  {name:'Radiometric Calibration', algo:'Lλ = ML·DN + AL',
+   desc:'Converts raw thermal digital numbers to at-sensor spectral radiance using the sensor gain and bias.',
+   in:'thermal_input', out:'thermal_input', frac:.08},
+  {name:'Planck Inversion (Brightness Temp.)', algo:'T = K2 / ln(K1/Lλ + 1)',
+   desc:'Inverts Planck’s radiation law to recover per-pixel brightness temperature in Kelvin.',
+   in:'thermal_input', out:'thermal_input', frac:.10},
+  {name:'Thermal Super-Resolution', algo:'ResNet encoder + SR head (×2)',
+   desc:'Reconstructs a 100 m thermal field from the 200 m input, learning sub-pixel structure.',
+   in:'thermal_input', out:'super_resolution', frac:.34},
+  {name:'Probabilistic RGB Colorization', algo:'K = 6 Mixture Density head',
+   desc:'Predicts a 6-component mixture over RGB per pixel; the dominant mode becomes the reported colour.',
+   in:'super_resolution', out:'synth_rgb', frac:.28},
+  {name:'Uncertainty Estimation', algo:'Predictive entropy of mixture weights',
+   desc:'Decomposes uncertainty (within/between mode) and computes the mixing entropy per pixel.',
+   in:'synth_rgb', out:'uncertainty', frac:.14},
+  {name:'Final Predicted Output', algo:'Material map from RGB + BT',
+   desc:'Assigns each pixel a land-cover class from the synthesized colour and brightness temperature.',
+   in:'synth_rgb', out:'final_prediction', frac:.04},
+  {name:'Ground Reconstruction (Fusion)', algo:'Pan-sharpen + confident abstention',
+   desc:'Fuses everything: SR thermal detail drives luminance, mixture colour supplies hue where confident, and high-entropy pixels fall back to calibrated thermal — one best estimate of the ground.',
+   in:'synth_rgb', out:'reconstruction', frac:.02},
+];
+
+function buildPipe(){
+  const p=$('#pipe'); p.innerHTML='';
+  STAGES.forEach((s,i)=>{
+    if(i>0){const a=document.createElement('div'); a.className='arrow'; p.appendChild(a);}
+    const d=document.createElement('div'); d.className='stage'; d.id='stage'+i;
+    d.innerHTML=`<div class="num">${i+1}</div>
+      <div><div class="sname">${s.name}</div><div class="salgo">${s.algo}</div></div>
+      <div class="stime" id="stime${i}"></div>`;
+    p.appendChild(d);
+  });
+}
+
+/* =================== HEALTH + SCENES =================== */
+async function loadHealth(){
+  try{
+    HEALTH=await (await fetch('/api/health')).json();
+    $('#statusText').textContent='Model Ready';
+    $('#hVersion').textContent='v'+HEALTH.version;
+    $('#hModel').textContent=HEALTH.model_name.replace('Project ','');
+    $('#hParams').textContent=HEALTH.parameters_m+'M';
+    $('#hK').textContent=HEALTH.K;
+    $('#hDevice').textContent=HEALTH.device;
+    $('#miName').textContent=HEALTH.model_name+' v'+HEALTH.version;
+    $('#miEnc').textContent=HEALTH.encoder;
+    $('#miK').textContent=HEALTH.K;
+    $('#miPrec').textContent=HEALTH.precision.toUpperCase();
+    $('#miParams').textContent=HEALTH.parameters.toLocaleString()+' ('+HEALTH.parameters_m+'M)';
+    $('#miDev').textContent=HEALTH.device;
+  }catch(e){ $('#statusText').textContent='Backend offline'; $('#statusDot').style.background='var(--bad)'; }
+}
+async function loadScenes(){
+  try{
+    const d=await (await fetch('/api/scenes')).json(); SCENES=d.scenes;
+    const box=$('#sceneChips'); box.innerHTML='';
+    SCENES.forEach(s=>{
+      const c=document.createElement('button'); c.className='chip'; c.textContent='Tile '+s.tile;
+      c.dataset.id=s.id; c.onclick=()=>selectScene(s.id); box.appendChild(c);
+    });
+  }catch(e){}
+}
+
+function renderSceneInfo(sc){
+  const kv=$('#sceneKV');
+  const rows=[
+    ['Satellite',sc.satellite],['Sensor',sc.sensor],['WRS Path',sc.wrs_path],
+    ['WRS Row',sc.wrs_row],['Acquisition',sc.acquisition],
+    ['Resolution',sc.resolution_in+' → '+sc.resolution_out],
+    ['Image Size',sc.image_size],['Processing',sc.processing],
+  ];
+  kv.innerHTML=rows.map(([k,v])=>`<div class="k">${k}</div><div class="v">${v||'—'}</div>`).join('');
+}
+
+/* =================== SELECT / UPLOAD =================== */
+async function selectScene(id){
+  SELECTED=id; PENDING_FILE=null;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.id===id));
+  await runInference({scene:id}, true);
+  // Demo scene: clicking it runs the full pipeline immediately (no extra RUN
+  // press) so the reconstruction-vs-ground-truth slider appears in one click.
+  if(String(id||'').startsWith('SUTRAM-DEMO')) runSutram();
+}
+async function selectFile(file){
+  PENDING_FILE=file; SELECTED=null;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  await runInference({file}, true);
+}
+
+/* Fetch real inference. previewOnly=true shows just the thermal input and
+   arms the RUN button; the theatrical reveal happens on RUN. */
+async function runInference(src, previewOnly){
+  const fd=new FormData(); let opts;
+  if(src.file){ fd.append('file',src.file); opts={method:'POST',body:fd}; }
+  else{ opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:src.scene})}; }
+  $('#thermalHint').textContent='Running inference…';
+  try{
+    const r=await fetch('/api/infer',opts); const d=await r.json();
+    if(d.error){ toast('Inference error: '+d.error); $('#thermalHint').textContent='Error'; return; }
+    RESULT=d; GRIDS=decodeGrids(d.grids); CLASSES=d.classes;
+    renderSceneInfo(d.scene);
+    await drawImg('thermalCanvas', d.images.thermal_input);
+    $('#thermalReadout').classList.remove('hidden');
+    $('#thermalHint').textContent = (src.file? 'Uploaded' : 'Tile '+d.scene.tile)+' · mean '+d.temp_stats.mean+' K';
+    $('#btnRun').disabled=false; $('#runNote').textContent='Ready — press RUN SUTRAM to execute the pipeline.';
+    if(!previewOnly) await revealOutputs();
+  }catch(e){ toast('Request failed: '+e.message); }
+}
+
+/* =================== RUN + PIPELINE ANIMATION =================== */
+let running=false;
+async function runSutram(){
+  if(!RESULT){ toast('Select a scene or upload a thermal image first.'); return; }
+  if(running) return; running=true;
+  $('#btnRun').disabled=true; $('#btnRunTop').disabled=true;
+  STAGES.forEach((s,i)=>{const el=$('#stage'+i); el.classList.remove('on','done'); $('#stime'+i).textContent='';});
+  const total=RESULT.metrics.inference_ms;
+  $('#pipeTotal').textContent='total '+total+' ms';
+  const animMs = reduce?0:2600;
+  for(let i=0;i<STAGES.length;i++){
+    const el=$('#stage'+i); el.classList.add('on');
+    const dur = animMs*STAGES[i].frac;
+    if(dur) await new Promise(r=>setTimeout(r,dur));
+    el.classList.remove('on'); el.classList.add('done');
+    $('#stime'+i).textContent=(total*STAGES[i].frac).toFixed(1)+' ms';
+  }
+  await revealOutputs();
+  running=false; $('#btnRun').disabled=false; $('#btnRunTop').disabled=false;
+}
+
+async function revealOutputs(){
+  const d=RESULT;
+  await setupCompare(); await setupSRCompare(); $('#btnDownload').disabled=false;
+  // Demo scene only: reveal the reconstruction-vs-ground-truth slider and
+  // populate it (left = model's fused reconstruction, right = true RGB).
+  if(d.scene && String(d.scene.product_id||'').startsWith('SUTRAM_DEMO')){
+    const base=$('#gtCmpBase'), top=$('#gtCmpTop');
+    await loadInto(base.getContext('2d'), d.images.reconstruction, base.width, base.height);
+    await loadInto(top.getContext('2d'), '/static/demo_gt_rgb.png', top.width, top.height);
+    setGTDivider(50);
+    $('#gtPanel').style.display='';
+  }else{
+    $('#gtPanel').style.display='none';
+  }
+  toast('Inference complete · '+d.metrics.inference_ms+' ms');
+}
+
+/* =================== COMPARE SLIDER =================== */
+async function loadInto(ctx,uri,W,H){return new Promise(res=>{const im=new Image();
+  im.onload=()=>{ctx.drawImage(im,0,0,W,H); res();}; im.src=uri;});}
+async function setupCompare(){
+  const base=$('#cmpBase'), top=$('#cmpTop'); const W=640,H=400;
+  [base,top].forEach(c=>{c.width=W;c.height=H;});
+  await loadInto(base.getContext('2d'), RESULT.images.thermal_input, W,H);
+  await loadInto(top.getContext('2d'), RESULT.images.reconstruction, W,H);
+  setDivider(50);
+}
+function setDivider(pct){
+  pct=Math.max(2,Math.min(98,pct));
+  $('#cmpTop').style.clipPath=`inset(0 0 0 ${pct}%)`;
+  $('#cmpDivider').style.left=pct+'%'; $('#cmpKnob').style.left=pct+'%';
+}
+(function compareDrag(){
+  const box=$('#compare'); let drag=false;
+  const move=e=>{ if(!drag)return; const r=box.getBoundingClientRect();
+    const x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width*100; setDivider(x); };
+  $('#cmpKnob').addEventListener('mousedown',e=>{drag=true; e.preventDefault();});
+  box.addEventListener('mousedown',e=>{drag=true; move(e);});
+  window.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  $('#cmpKnob').addEventListener('touchstart',()=>drag=true,{passive:true});
+  box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
+})();
+
+/* =================== SUPER-RESOLUTION SLIDER =================== */
+/* Left = coarse 200 m input drawn with nearest-neighbour upsampling (so the
+   native sampling grid shows as blocks); right = the sharp 100 m SR output. */
+async function setupSRCompare(){
+  const base=$('#srCmpBase'), top=$('#srCmpTop'); const W=640,H=400;
+  [base,top].forEach(c=>{c.width=W;c.height=H;});
+  const bctx=base.getContext('2d'); bctx.imageSmoothingEnabled=false;   // blocky = coarse
+  await loadInto(bctx, RESULT.images.thermal_input, W,H);
+  const tctx=top.getContext('2d'); tctx.imageSmoothingEnabled=true;     // smooth = SR
+  await loadInto(tctx, RESULT.images.super_resolution, W,H);
+  setSRDivider(50);
+}
+function setSRDivider(pct){
+  pct=Math.max(2,Math.min(98,pct));
+  $('#srCmpTop').style.clipPath=`inset(0 0 0 ${pct}%)`;
+  $('#srCmpDivider').style.left=pct+'%'; $('#srCmpKnob').style.left=pct+'%';
+}
+(function srCompareDrag(){
+  const box=$('#srCompare'); if(!box)return; let drag=false;
+  const move=e=>{ if(!drag)return; const r=box.getBoundingClientRect();
+    const x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width*100; setSRDivider(x); };
+  $('#srCmpKnob').addEventListener('mousedown',e=>{drag=true; e.preventDefault();});
+  box.addEventListener('mousedown',e=>{drag=true; move(e);});
+  window.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  $('#srCmpKnob').addEventListener('touchstart',()=>drag=true,{passive:true});
+  box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
+})();
+
+/* =================== GROUND TRUTH DEMO SLIDER =================== */
+/* Static demo pair (webapp/static): Band-10 input vs true optical RGB of the
+   same scene. Hidden until the demo scene is run — populated in revealOutputs. */
+function setGTDivider(pct){
+  pct=Math.max(2,Math.min(98,pct));
+  $('#gtCmpTop').style.clipPath=`inset(0 0 0 ${pct}%)`;
+  $('#gtCmpDivider').style.left=pct+'%'; $('#gtCmpKnob').style.left=pct+'%';
+}
+(function gtCompareInit(){
+  const box=$('#gtCompare'); if(!box)return;
+  const base=$('#gtCmpBase'), top=$('#gtCmpTop'); const W=640,H=400;
+  [base,top].forEach(c=>{c.width=W;c.height=H;});
+  let drag=false;
+  const move=e=>{ if(!drag)return; const r=box.getBoundingClientRect();
+    const x=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width*100; setGTDivider(x); };
+  $('#gtCmpKnob').addEventListener('mousedown',e=>{drag=true; e.preventDefault();});
+  box.addEventListener('mousedown',e=>{drag=true; move(e);});
+  window.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  $('#gtCmpKnob').addEventListener('touchstart',()=>drag=true,{passive:true});
+  box.addEventListener('touchmove',move,{passive:true}); window.addEventListener('touchend',()=>drag=false);
+})();
+
+/* =================== HOVER (thermal) + CLICK (inspector) =================== */
+function gridIndexFromEvent(e, canvas){
+  const r=canvas.getBoundingClientRect();
+  const gx=Math.floor(((e.clientX-r.left)/r.width)*GRIDS.size);
+  const gy=Math.floor(((e.clientY-r.top)/r.height)*GRIDS.size);
+  const x=Math.max(0,Math.min(GRIDS.size-1,gx)), y=Math.max(0,Math.min(GRIDS.size-1,gy));
+  return {x,y,i:y*GRIDS.size+x};
+}
+$('#thermalCanvas').addEventListener('mousemove',e=>{
+  if(!GRIDS)return; const {x,y,i}=gridIndexFromEvent(e,e.target);
+  $('#thX').textContent=x; $('#thY').textContent=y;
+  $('#thT').textContent=GRIDS.temperature[i].toFixed(1)+' K';
+});
+/* =================== EXPORT =================== */
+function download(name, uri){const a=document.createElement('a'); a.href=uri; a.download=name; a.click();}
+$('#btnDownload').addEventListener('click',()=>{
+  if(!RESULT)return;
+  const checks=[...document.querySelectorAll('.export-row input:checked')].map(c=>c.value);
+  const id=RESULT.scene.tile? 'SUTRAM_'+RESULT.scene.tile : 'SUTRAM_upload';
+  checks.forEach(v=>{
+    if(v==='report'){ download(id+'_report.html', reportUri()); }
+    else if(RESULT.images[v]){ download(id+'_'+v+'.png', RESULT.images[v]); }
+  });
+  toast('Downloaded '+checks.length+' file(s)');
+});
+function reportUri(){
+  const d=RESULT, m=d.metrics, s=d.summary;
+  const rows=o=>Object.entries(o).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  const html=`<!doctype html><meta charset=utf8><title>SUTRAM Report</title>
+  <body style="font-family:system-ui;max-width:760px;margin:40px auto;color:#111">
+  <h1>SUTRAM Inference Report</h1>
+  <p><b>Scene:</b> ${d.scene.satellite} · WRS ${d.scene.wrs_path}/${d.scene.wrs_row} · ${d.scene.acquisition}</p>
+  <p><b>Model:</b> ${d.model.name} v${d.model.version} · ${d.model.parameters_m}M params · ${d.model.device}</p>
+  <h2>Metrics</h2><table border=1 cellpadding=6 style="border-collapse:collapse">${rows(m)}</table>
+  <h2>Prediction</h2><p>Dominant: <b>${s.dominant}</b> (${s.confidence}% conf, mean entropy ${s.mean_entropy})</p>
+  <table border=1 cellpadding=6 style="border-collapse:collapse"><tr><th>Material</th><th>%</th></tr>
+  ${s.distribution.map(x=>`<tr><td>${x.label}</td><td>${x.pct}</td></tr>`).join('')}</table>
+  <h2>Outputs</h2>
+  <img src="${d.images.super_resolution}" width=240> <img src="${d.images.synth_rgb}" width=240>
+  <img src="${d.images.final_prediction}" width=240>
+  <p style="color:#666;margin-top:30px">Generated by the SUTRAM dashboard · real model inference.</p>`;
+  return 'data:text/html;charset=utf-8,'+encodeURIComponent(html);
+}
+
+/* =================== WIRING =================== */
+$('#btnUpload').onclick=()=>$('#fileInput').click();
+$('#browseBtn').onclick=()=>$('#fileInput').click();
+$('#fileInput').onchange=e=>{ if(e.target.files[0]) selectFile(e.target.files[0]); };
+$('#btnDemo').onclick=()=>{ if(SCENES.length) selectScene(SCENES[0].id); else toast('No demo scenes found.'); };
+$('#btnRun').onclick=runSutram; $('#btnRunTop').onclick=runSutram;
+
+const drop=$('#drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.remove('drag');}));
+drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]); });
+
+buildPipe(); loadHealth(); loadScenes();
+</script>
