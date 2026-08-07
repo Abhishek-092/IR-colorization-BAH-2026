@@ -1,0 +1,8 @@
+# OPTIONAL — photorealistic refiner (Track 2). Install ON TOP of requirements.txt
+# to enable the SD-Turbo realism pass:  SUTRAM_REFINER=1 python webapp/server.py
+# First run downloads ~2.5 GB of SD-Turbo weights (needs internet, one time).
+# Without this the model runs normally; the refiner just stays off.
+diffusers>=0.27.0
+transformers>=4.40.0
+accelerate>=0.30.0
+safetensors>=0.4.0
