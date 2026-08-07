@@ -1,0 +1,11 @@
+{
+  "tiles": [
+    {
+      "id": "SUTRAM-DEMO-Alpha",
+      "tile": "Alpha",
+      "product_id": "SUTRAM_DEMO_SCENE01",
+      "dn_min": 140.5,
+      "dn_max": 210.3
+    }
+  ]
+}
